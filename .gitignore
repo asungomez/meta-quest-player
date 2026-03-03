@@ -1,0 +1,32 @@
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+
+# Huge files
+[Aa]ssets/StreamingAssets/360.mp4
+
+# Unity serialized
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Unity3D generated meta
+*.pidb
+*.booproj
+*.svn.meta
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Crash reports
+sysinfo.txt
+
+# Build output
+*.apk
+*.aab
+*.unitypackage
