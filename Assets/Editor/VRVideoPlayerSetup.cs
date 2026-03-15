@@ -22,13 +22,21 @@ public static class VRVideoPlayerSetup
         // Root object that handles passthrough only.
         GameObject welcomeRoot = new GameObject("WelcomeRoot");
         welcomeRoot.AddComponent<QuestPassthroughController>();
+        var headPointer = welcomeRoot.AddComponent<HeadGazePointer>();
+        headPointer.screenLockedReticle = true;
+        headPointer.reticleDistance = 1.0f;
+        headPointer.reticleScale = 0.016f;
+        headPointer.pointerColor = new Color(1f, 1f, 1f, 1f);
 
         // Welcome panel in front of the user.
         GameObject welcomeScreen = new GameObject("WelcomeScreen");
-        welcomeScreen.transform.position = new Vector3(0f, 1.55f, 1.8f);
+        welcomeScreen.transform.position = new Vector3(0f, 1.55f, 2.4f);
         welcomeScreen.transform.rotation = Quaternion.identity;
 
-        BuildWelcomeCanvas(welcomeScreen.transform);
+        BuildWelcomeCanvas(welcomeScreen.transform, out RectTransform buttonRect, out Image buttonImage);
+        var buttonHover = welcomeRoot.AddComponent<HeadGazeButtonHover>();
+        buttonHover.targetRect = buttonRect;
+        buttonHover.targetImage = buttonImage;
 
         Undo.RegisterCreatedObjectUndo(welcomeRoot, "Create Welcome Root");
         Undo.RegisterCreatedObjectUndo(welcomeScreen, "Create Welcome Screen");
@@ -42,8 +50,11 @@ public static class VRVideoPlayerSetup
             Undo.DestroyObjectImmediate(go);
     }
 
-    private static void BuildWelcomeCanvas(Transform parent)
+    private static Transform BuildWelcomeCanvas(Transform parent, out RectTransform buttonRect, out Image buttonImage)
     {
+        buttonRect = null;
+        buttonImage = null;
+
         var canvasObj = new GameObject("WelcomeCanvas");
         canvasObj.transform.SetParent(parent, false);
         canvasObj.transform.localPosition = new Vector3(0f, -0.15f, 0.45f);
@@ -94,7 +105,7 @@ public static class VRVideoPlayerSetup
         titleText.text = "Hello world";
         titleText.fontSize = 110f;
         titleText.alignment = TextAlignmentOptions.Center;
-        titleText.enableWordWrapping = false;
+        titleText.textWrappingMode = TextWrappingModes.NoWrap;
         titleText.color = Color.white;
 
         var subtitleObj = new GameObject("Subtitle", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -109,8 +120,43 @@ public static class VRVideoPlayerSetup
         subtitleText.text = "Welcome to our VR experience";
         subtitleText.fontSize = 62f;
         subtitleText.alignment = TextAlignmentOptions.Center;
-        subtitleText.enableWordWrapping = false;
+        subtitleText.textWrappingMode = TextWrappingModes.NoWrap;
         subtitleText.color = new Color(0.90f, 0.95f, 1f, 0.95f);
+
+        var buttonObj = new GameObject("PrimaryButton", typeof(RectTransform), typeof(Image), typeof(Outline));
+        buttonObj.transform.SetParent(panelObj.transform, false);
+        buttonRect = buttonObj.GetComponent<RectTransform>();
+        buttonRect.anchorMin = new Vector2(0.5f, 0.5f);
+        buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
+        buttonRect.pivot = new Vector2(0.5f, 0.5f);
+        buttonRect.anchoredPosition = new Vector2(0f, -300f);
+        buttonRect.sizeDelta = new Vector2(560f, 130f);
+
+        buttonImage = buttonObj.GetComponent<Image>();
+        buttonImage.sprite = rounded;
+        buttonImage.type = Image.Type.Sliced;
+        buttonImage.color = new Color(0.16f, 0.43f, 0.96f, 1f);
+
+        var buttonOutline = buttonObj.GetComponent<Outline>();
+        buttonOutline.effectColor = new Color(0.72f, 0.86f, 1f, 0.32f);
+        buttonOutline.effectDistance = new Vector2(2f, -2f);
+        buttonOutline.useGraphicAlpha = true;
+
+        var buttonTextObj = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        buttonTextObj.transform.SetParent(buttonObj.transform, false);
+        var buttonTextRect = buttonTextObj.GetComponent<RectTransform>();
+        buttonTextRect.anchorMin = Vector2.zero;
+        buttonTextRect.anchorMax = Vector2.one;
+        buttonTextRect.offsetMin = Vector2.zero;
+        buttonTextRect.offsetMax = Vector2.zero;
+        var buttonText = buttonTextObj.GetComponent<TextMeshProUGUI>();
+        buttonText.text = "Start";
+        buttonText.fontSize = 56f;
+        buttonText.alignment = TextAlignmentOptions.Center;
+        buttonText.textWrappingMode = TextWrappingModes.NoWrap;
+        buttonText.color = Color.white;
+
+        return panelObj.transform;
     }
 
     private static Sprite CreateRoundedSprite(int width, int height, int radius)
