@@ -3,7 +3,7 @@ using UnityEditor;
 using UnityEngine.Video;
 
 /// <summary>
-/// Editor menu to set up the gaze-controlled 360 video player in the current scene.
+/// Editor menu to set up the VR video library player scene in the current scene.
 /// </summary>
 public static class VRVideoPlayerSetup
 {
@@ -14,6 +14,7 @@ public static class VRVideoPlayerSetup
         GameObject videoRoot = new GameObject("VRVideoPlayer");
         VideoPlayer vp = videoRoot.AddComponent<VideoPlayer>();
         VRVideoPlayerController controller = videoRoot.AddComponent<VRVideoPlayerController>();
+        VideoLibraryController libraryController = videoRoot.AddComponent<VideoLibraryController>();
 
         GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         sphere.name = "VideoSphere";
@@ -29,69 +30,70 @@ public static class VRVideoPlayerSetup
 
         controller.videoPlayer = vp;
         controller.videoRenderer = sphere.GetComponent<Renderer>();
-        controller.videoFileName = "360.mp4";
 
-        // 2. Create Play Screen with "Play" text
+        // 2. Create library screen shown at startup
+        GameObject libraryScreen = new GameObject("LibraryScreen");
+        libraryScreen.transform.position = new Vector3(0, 1.6f, 2.5f);
+        libraryScreen.transform.rotation = Quaternion.identity;
+
+        // Title text
+        GameObject titleObj = new GameObject("Title");
+        titleObj.transform.SetParent(libraryScreen.transform, false);
+        titleObj.transform.localPosition = new Vector3(0f, 0.95f, 0f);
+        TextMesh titleText = titleObj.AddComponent<TextMesh>();
+        titleText.text = "Video Library";
+        titleText.fontSize = 72;
+        titleText.characterSize = 0.03f;
+        titleText.anchor = TextAnchor.MiddleCenter;
+        titleText.alignment = TextAlignment.Center;
+        titleText.color = Color.white;
+
+        // Status text
+        GameObject statusObj = new GameObject("StatusText");
+        statusObj.transform.SetParent(libraryScreen.transform, false);
+        statusObj.transform.localPosition = new Vector3(0f, 0.65f, 0f);
+        TextMesh statusText = statusObj.AddComponent<TextMesh>();
+        statusText.text = "Loading videos...";
+        statusText.fontSize = 44;
+        statusText.characterSize = 0.02f;
+        statusText.anchor = TextAnchor.UpperCenter;
+        statusText.alignment = TextAlignment.Center;
+        statusText.color = new Color(0.85f, 0.9f, 1f);
+
+        // Admin help text
+        GameObject adminObj = new GameObject("AdminHelpText");
+        adminObj.transform.SetParent(libraryScreen.transform, false);
+        adminObj.transform.localPosition = new Vector3(0f, -1.0f, 0f);
+        TextMesh adminText = adminObj.AddComponent<TextMesh>();
+        adminText.text = "Admin actions appear with controllers.";
+        adminText.fontSize = 34;
+        adminText.characterSize = 0.017f;
+        adminText.anchor = TextAnchor.UpperCenter;
+        adminText.alignment = TextAlignment.Center;
+        adminText.color = new Color(0.7f, 0.85f, 1f);
+
+        // Anchor where dynamic gaze buttons are created
+        GameObject buttonAnchor = new GameObject("ButtonAnchor");
+        buttonAnchor.transform.SetParent(libraryScreen.transform, false);
+        buttonAnchor.transform.localPosition = new Vector3(0f, 0.3f, 0f);
+
+        // Optional legacy play screen remains unused
         GameObject playScreen = new GameObject("PlayScreen");
-        playScreen.transform.position = new Vector3(0, 1.6f, 2.5f); // In front of user
-        playScreen.transform.rotation = Quaternion.identity;
+        playScreen.transform.position = new Vector3(0, 1.6f, 2.5f);
+        playScreen.SetActive(false);
 
-        GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        quad.name = "PlayButtonQuad";
-        quad.transform.SetParent(playScreen.transform);
-        quad.transform.localPosition = Vector3.zero;
-        quad.transform.localScale = new Vector3(1.5f, 0.5f, 1f);
-        quad.GetComponent<Renderer>().enabled = false; // Canvas provides visuals, collider handles raycast
-
-        // Canvas for "Play" text
-        GameObject canvasObj = new GameObject("PlayCanvas");
-        canvasObj.transform.SetParent(playScreen.transform);
-        canvasObj.transform.localPosition = Vector3.zero;
-
-        Canvas canvas = canvasObj.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.WorldSpace;
-        canvasObj.AddComponent<UnityEngine.UI.CanvasScaler>();
-        canvasObj.AddComponent<UnityEngine.UI.GraphicRaycaster>();
-
-        RectTransform canvasRect = canvasObj.GetComponent<RectTransform>();
-        canvasRect.sizeDelta = new Vector2(400, 120);
-        canvasRect.localScale = new Vector3(0.001f, 0.001f, 0.001f);
-
-        // Dark background panel
-        GameObject panelObj = new GameObject("Background");
-        panelObj.transform.SetParent(canvasObj.transform, false);
-        var image = panelObj.AddComponent<UnityEngine.UI.Image>();
-        image.color = new Color(0.1f, 0.1f, 0.2f, 0.9f);
-        RectTransform panelRect = panelObj.GetComponent<RectTransform>();
-        panelRect.anchorMin = Vector2.zero;
-        panelRect.anchorMax = Vector2.one;
-        panelRect.sizeDelta = Vector2.zero;
-
-        GameObject textObj = new GameObject("PlayText");
-        textObj.transform.SetParent(canvasObj.transform, false);
-
-        var text = textObj.AddComponent<UnityEngine.UI.Text>();
-        text.text = "Play";
-        text.fontSize = 72;
-        text.alignment = TextAnchor.MiddleCenter;
-        text.color = Color.white;
-
-        RectTransform textRect = textObj.GetComponent<RectTransform>();
-        textRect.anchorMin = Vector2.zero;
-        textRect.anchorMax = Vector2.one;
-        textRect.sizeDelta = Vector2.zero;
-        textRect.anchoredPosition = Vector2.zero;
-
-        // Gaze button on the quad (collider for raycast)
-        GazePlayButton gazeBtn = quad.AddComponent<GazePlayButton>();
         controller.playScreen = playScreen;
-        gazeBtn.OnGazeActivated.AddListener(controller.PlayVideo);
+        controller.libraryScreen = libraryScreen;
 
-        // Ensure camera reference
-        gazeBtn.gazeCamera = Camera.main;
+        libraryController.videoPlayerController = controller;
+        libraryController.buttonAnchor = buttonAnchor.transform;
+        libraryController.statusText = statusText;
+        libraryController.adminHelpText = adminText;
+        libraryController.gazeCamera = Camera.main;
 
         Undo.RegisterCreatedObjectUndo(videoRoot, "Create VR Video Player");
-        Undo.RegisterCreatedObjectUndo(playScreen, "Create Play Screen");
-        Selection.activeGameObject = playScreen;
+        Undo.RegisterCreatedObjectUndo(libraryScreen, "Create Library Screen");
+        Undo.RegisterCreatedObjectUndo(playScreen, "Create Legacy Play Screen");
+        Selection.activeGameObject = libraryScreen;
     }
 }

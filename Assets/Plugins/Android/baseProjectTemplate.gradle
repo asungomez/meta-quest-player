@@ -1,0 +1,10 @@
+plugins {
+    // AGP 8.5.2 - downgraded from 8.10.0 for corporate proxy compatibility
+    // Compatible with Gradle 8.7+ (Unity 6 uses Gradle 8.13)
+    id 'com.android.application' version '8.5.2' apply false
+    id 'com.android.library' version '8.5.2' apply false
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}

@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Video;
+using System.IO;
 
 /// <summary>
 /// Controls 360 video playback. Hides the play screen and plays video when triggered.
@@ -7,9 +8,6 @@ using UnityEngine.Video;
 /// </summary>
 public class VRVideoPlayerController : MonoBehaviour
 {
-    [Tooltip("Video filename in StreamingAssets folder (e.g. 360.mp4).")]
-    public string videoFileName = "360.mp4";
-
     [Tooltip("GameObject to hide when video starts (e.g. Play screen).")]
     public GameObject playScreen;
 
@@ -18,6 +16,9 @@ public class VRVideoPlayerController : MonoBehaviour
 
     [Tooltip("Sphere/quad that displays the video. Must have a Renderer with a material.")]
     public Renderer videoRenderer;
+
+    [Tooltip("Screen shown while choosing a video.")]
+    public GameObject libraryScreen;
 
     private RenderTexture _renderTexture;
     private bool _isPlaying;
@@ -44,10 +45,8 @@ public class VRVideoPlayerController : MonoBehaviour
 
     private void SetupVideoPlayer()
     {
-        string path = System.IO.Path.Combine(Application.streamingAssetsPath, videoFileName);
         videoPlayer.source = VideoSource.Url;
-        videoPlayer.url = path;
-        videoPlayer.renderMode = VideoRenderMode.RenderTexturePreferred;
+        videoPlayer.renderMode = VideoRenderMode.RenderTexture;
 
         // Create RenderTexture for video output
         _renderTexture = new RenderTexture(1920, 1080, 0);
@@ -71,18 +70,67 @@ public class VRVideoPlayerController : MonoBehaviour
     /// </summary>
     public void PlayVideo()
     {
-        if (_isPlaying)
+        Debug.LogWarning("VRVideoPlayerController: PlayVideo() called without a selected library video. Ignoring.");
+    }
+
+    public void PlayVideoByPath(string pathOrFileName)
+    {
+        if (_isPlaying || videoPlayer == null || string.IsNullOrWhiteSpace(pathOrFileName))
             return;
 
         _isPlaying = true;
+        string resolvedPath = ResolveVideoPath(pathOrFileName);
+        if (string.IsNullOrEmpty(resolvedPath))
+        {
+            _isPlaying = false;
+            Debug.LogWarning("VRVideoPlayerController: Selected video path is invalid or missing.");
+            return;
+        }
+        videoPlayer.url = resolvedPath;
 
         if (playScreen != null)
             playScreen.SetActive(false);
+
+        if (libraryScreen != null)
+            libraryScreen.SetActive(false);
 
         if (videoPlayer != null)
         {
             videoPlayer.Play();
         }
+    }
+
+    public void StopVideoAndShowLibrary()
+    {
+        _isPlaying = false;
+
+        if (videoPlayer != null && videoPlayer.isPlaying)
+            videoPlayer.Stop();
+
+        if (libraryScreen != null)
+            libraryScreen.SetActive(true);
+
+        if (playScreen != null)
+            playScreen.SetActive(false);
+    }
+
+    private string ResolveVideoPath(string pathOrFileName)
+    {
+        if (string.IsNullOrWhiteSpace(pathOrFileName))
+            return null;
+
+        if (Path.IsPathRooted(pathOrFileName))
+        {
+            if (!File.Exists(pathOrFileName))
+                return null;
+            return pathOrFileName;
+        }
+
+        string localPath = Path.Combine(Application.persistentDataPath, "videos", pathOrFileName);
+        if (File.Exists(localPath))
+            return localPath;
+
+        return null;
     }
 
     private void OnDestroy()

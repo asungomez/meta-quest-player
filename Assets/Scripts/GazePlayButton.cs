@@ -18,6 +18,9 @@ public class GazePlayButton : MonoBehaviour
     [Tooltip("Max ray distance for gaze detection.")]
     public float maxRayDistance = 10f;
 
+    [Tooltip("If true, can only activate once until ResetActivation is called.")]
+    public bool oneShot = true;
+
     public UnityEvent OnGazeActivated;
 
     private float _gazeAccumulator;
@@ -40,7 +43,7 @@ public class GazePlayButton : MonoBehaviour
             // On Quest, OVRCameraRig's center eye is typically the main camera
             if (gazeCamera == null)
             {
-                var ovrRig = FindObjectOfType<OVRCameraRig>();
+                var ovrRig = FindFirstObjectByType<OVRCameraRig>();
                 if (ovrRig != null && ovrRig.centerEyeAnchor != null)
                     gazeCamera = ovrRig.centerEyeAnchor.GetComponent<Camera>();
             }
@@ -50,7 +53,7 @@ public class GazePlayButton : MonoBehaviour
 
     private void Update()
     {
-        if (_hasActivated || gazeCamera == null)
+        if ((oneShot && _hasActivated) || gazeCamera == null)
             return;
 
         Ray ray = new Ray(gazeCamera.transform.position, gazeCamera.transform.forward);
@@ -60,13 +63,21 @@ public class GazePlayButton : MonoBehaviour
             _gazeAccumulator += Time.deltaTime;
             if (_gazeAccumulator >= dwellTime)
             {
-                _hasActivated = true;
+                if (oneShot)
+                    _hasActivated = true;
                 OnGazeActivated?.Invoke();
+                _gazeAccumulator = 0f;
             }
         }
         else
         {
             _gazeAccumulator = 0f;
         }
+    }
+
+    public void ResetActivation()
+    {
+        _hasActivated = false;
+        _gazeAccumulator = 0f;
     }
 }
