@@ -41,6 +41,10 @@ public class VRVideoPlayerController : MonoBehaviour
     private void Start()
     {
         SetupVideoPlayer();
+
+        // Keep the 360 sphere hidden while users are in the library UI.
+        if (videoRenderer != null)
+            videoRenderer.gameObject.SetActive(false);
     }
 
     private void SetupVideoPlayer()
@@ -94,6 +98,9 @@ public class VRVideoPlayerController : MonoBehaviour
         if (libraryScreen != null)
             libraryScreen.SetActive(false);
 
+        if (videoRenderer != null)
+            videoRenderer.gameObject.SetActive(true);
+
         if (videoPlayer != null)
         {
             videoPlayer.Play();
@@ -112,6 +119,9 @@ public class VRVideoPlayerController : MonoBehaviour
 
         if (playScreen != null)
             playScreen.SetActive(false);
+
+        if (videoRenderer != null)
+            videoRenderer.gameObject.SetActive(false);
     }
 
     private string ResolveVideoPath(string pathOrFileName)

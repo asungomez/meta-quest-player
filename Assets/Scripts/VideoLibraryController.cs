@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using TMPro;
 using UnityEngine;
 using UnityEngine.XR;
 
@@ -14,14 +15,14 @@ public class VideoLibraryController : MonoBehaviour
     public VRVideoPlayerController videoPlayerController;
     public Transform buttonAnchor;
     public Camera gazeCamera;
-    public TextMesh statusText;
-    public TextMesh adminHelpText;
+    public TMP_Text statusText;
+    public TMP_Text adminHelpText;
 
     [Header("Button Layout")]
-    public float buttonWidth = 1.5f;
-    public float buttonHeight = 0.2f;
-    public float buttonSpacing = 0.24f;
-    public int maxVisibleButtons = 8;
+    public float buttonWidth = 2.0f;
+    public float buttonHeight = 0.3f;
+    public float buttonSpacing = 0.34f;
+    public int maxVisibleButtons = 6;
 
     [Header("Gaze")]
     [Range(0.5f, 3f)]
@@ -54,6 +55,23 @@ public class VideoLibraryController : MonoBehaviour
     {
         if (gazeCamera == null)
             gazeCamera = Camera.main;
+
+        // Readability defaults for in-headset text.
+        if (statusText != null)
+        {
+            statusText.fontSize = 54f;
+            statusText.alignment = TextAlignmentOptions.Center;
+            statusText.textWrappingMode = TextWrappingModes.NoWrap;
+            statusText.overflowMode = TextOverflowModes.Overflow;
+        }
+
+        if (adminHelpText != null)
+        {
+            adminHelpText.fontSize = 42f;
+            adminHelpText.alignment = TextAlignmentOptions.Center;
+            adminHelpText.textWrappingMode = TextWrappingModes.NoWrap;
+            adminHelpText.overflowMode = TextOverflowModes.Overflow;
+        }
 
         EnsureFolders();
         RefreshLibrary();
@@ -134,13 +152,14 @@ public class VideoLibraryController : MonoBehaviour
             GameObject labelObj = new GameObject("Label");
             labelObj.transform.SetParent(quad.transform, false);
             labelObj.transform.localPosition = new Vector3(0f, 0f, -0.01f);
+            labelObj.transform.localScale = Vector3.one * 0.01f;
 
-            var label = labelObj.AddComponent<TextMesh>();
+            var label = labelObj.AddComponent<TextMeshPro>();
             label.text = Path.GetFileName(videoPath);
-            label.fontSize = 48;
-            label.anchor = TextAnchor.MiddleCenter;
-            label.alignment = TextAlignment.Center;
-            label.characterSize = 0.02f;
+            label.fontSize = 42f;
+            label.alignment = TextAlignmentOptions.Center;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.overflowMode = TextOverflowModes.Truncate;
             label.color = Color.white;
 
             _buttons.Add(quad);
