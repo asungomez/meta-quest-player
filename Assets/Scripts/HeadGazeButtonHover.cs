@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 /// <summary>
 /// Changes a world-space UI button color when the user's head-gaze points at it.
@@ -18,11 +19,32 @@ public class HeadGazeButtonHover : MonoBehaviour
     [Tooltip("Button color when head gaze points at it.")]
     public Color hoverColor = new Color(0.08f, 0.23f, 0.58f, 1f);
 
+    [Tooltip("Circular progress image that fills while dwelling.")]
+    public Image progressImage;
+
+    [Tooltip("Subtitle/status label to update when click completes.")]
+    public TMP_Text statusText;
+
+    [Tooltip("Instruction shown before completion.")]
+    public string instructionText = "Click the start button";
+
+    [Tooltip("Status text format after click. Use {0} for click count.")]
+    public string clickedTextFormat = "Start button clicked {0} times";
+
+    [Tooltip("Seconds required to trigger a dwell click.")]
+    public float dwellSeconds = 1.0f;
+
     private Camera gazeCamera;
+    private float dwellTimer;
+    private bool activatedThisHover;
+    private int clickCount;
 
     private void Awake()
     {
         ApplyColor(normalColor);
+        SetProgress(0f);
+        if (statusText != null)
+            statusText.text = instructionText;
     }
 
     private void Update()
@@ -37,12 +59,46 @@ public class HeadGazeButtonHover : MonoBehaviour
 
         bool hovering = IsGazePointingAtRect(gazeCamera, targetRect);
         ApplyColor(hovering ? hoverColor : normalColor);
+
+        if (hovering)
+        {
+            if (activatedThisHover)
+            {
+                SetProgress(1f);
+                return;
+            }
+
+            dwellTimer += Time.deltaTime;
+            float progress = dwellSeconds > 0f ? Mathf.Clamp01(dwellTimer / dwellSeconds) : 1f;
+            SetProgress(progress);
+
+            if (progress >= 1f)
+            {
+                activatedThisHover = true;
+                clickCount++;
+                if (statusText != null)
+                    statusText.text = string.Format(clickedTextFormat, clickCount);
+            }
+        }
+        else
+        {
+            dwellTimer = 0f;
+            activatedThisHover = false;
+            SetProgress(0f);
+        }
     }
 
     private void ApplyColor(Color color)
     {
         if (targetImage != null && targetImage.color != color)
             targetImage.color = color;
+    }
+
+    private void SetProgress(float value)
+    {
+        if (progressImage == null)
+            return;
+        progressImage.fillAmount = Mathf.Clamp01(value);
     }
 
     private static bool IsGazePointingAtRect(Camera cam, RectTransform rect)

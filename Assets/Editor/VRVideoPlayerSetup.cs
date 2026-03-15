@@ -33,10 +33,18 @@ public static class VRVideoPlayerSetup
         welcomeScreen.transform.position = new Vector3(0f, 1.55f, 2.4f);
         welcomeScreen.transform.rotation = Quaternion.identity;
 
-        BuildWelcomeCanvas(welcomeScreen.transform, out RectTransform buttonRect, out Image buttonImage);
+        BuildWelcomeCanvas(
+            welcomeScreen.transform,
+            out RectTransform buttonRect,
+            out Image buttonImage,
+            out TextMeshProUGUI subtitleText,
+            out Image progressImage);
         var buttonHover = welcomeRoot.AddComponent<HeadGazeButtonHover>();
         buttonHover.targetRect = buttonRect;
         buttonHover.targetImage = buttonImage;
+        buttonHover.progressImage = progressImage;
+        buttonHover.statusText = subtitleText;
+        buttonHover.dwellSeconds = 1.0f;
 
         Undo.RegisterCreatedObjectUndo(welcomeRoot, "Create Welcome Root");
         Undo.RegisterCreatedObjectUndo(welcomeScreen, "Create Welcome Screen");
@@ -50,10 +58,17 @@ public static class VRVideoPlayerSetup
             Undo.DestroyObjectImmediate(go);
     }
 
-    private static Transform BuildWelcomeCanvas(Transform parent, out RectTransform buttonRect, out Image buttonImage)
+    private static Transform BuildWelcomeCanvas(
+        Transform parent,
+        out RectTransform buttonRect,
+        out Image buttonImage,
+        out TextMeshProUGUI subtitleText,
+        out Image progressImage)
     {
         buttonRect = null;
         buttonImage = null;
+        subtitleText = null;
+        progressImage = null;
 
         var canvasObj = new GameObject("WelcomeCanvas");
         canvasObj.transform.SetParent(parent, false);
@@ -116,8 +131,8 @@ public static class VRVideoPlayerSetup
         subtitleRt.pivot = new Vector2(0.5f, 0.5f);
         subtitleRt.anchoredPosition = new Vector2(0f, -140f);
         subtitleRt.sizeDelta = new Vector2(1200f, 120f);
-        var subtitleText = subtitleObj.GetComponent<TextMeshProUGUI>();
-        subtitleText.text = "Welcome to our VR experience";
+        subtitleText = subtitleObj.GetComponent<TextMeshProUGUI>();
+        subtitleText.text = "Click the start button";
         subtitleText.fontSize = 62f;
         subtitleText.alignment = TextAlignmentOptions.Center;
         subtitleText.textWrappingMode = TextWrappingModes.NoWrap;
@@ -155,6 +170,24 @@ public static class VRVideoPlayerSetup
         buttonText.alignment = TextAlignmentOptions.Center;
         buttonText.textWrappingMode = TextWrappingModes.NoWrap;
         buttonText.color = Color.white;
+
+        var progressObj = new GameObject("DwellProgress", typeof(RectTransform), typeof(Image));
+        progressObj.transform.SetParent(buttonObj.transform, false);
+        var progressRect = progressObj.GetComponent<RectTransform>();
+        progressRect.anchorMin = new Vector2(0.5f, 0.5f);
+        progressRect.anchorMax = new Vector2(0.5f, 0.5f);
+        progressRect.pivot = new Vector2(0.5f, 0.5f);
+        progressRect.anchoredPosition = new Vector2(215f, 0f);
+        progressRect.sizeDelta = new Vector2(76f, 76f);
+
+        progressImage = progressObj.GetComponent<Image>();
+        progressImage.sprite = CreateCircleSprite(192);
+        progressImage.type = Image.Type.Filled;
+        progressImage.fillMethod = Image.FillMethod.Radial360;
+        progressImage.fillOrigin = (int)Image.Origin360.Top;
+        progressImage.fillClockwise = true;
+        progressImage.fillAmount = 0f;
+        progressImage.color = new Color(0.84f, 0.93f, 1f, 0.9f);
 
         return panelObj.transform;
     }
@@ -205,5 +238,33 @@ public static class VRVideoPlayerSetup
         float insideDistance = Mathf.Min(Mathf.Max(bx, by), 0f);
 
         return outsideDistance + insideDistance - radius;
+    }
+
+    private static Sprite CreateCircleSprite(int size)
+    {
+        Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.name = "DwellProgressCircle";
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+
+        float cx = (size - 1) * 0.5f;
+        float cy = (size - 1) * 0.5f;
+        float radius = size * 0.46f;
+        float feather = 1.6f;
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = x - cx;
+                float dy = y - cy;
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                float alpha = 1f - Mathf.Clamp01((d - radius) / feather);
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+            }
+        }
+
+        tex.Apply(false, false);
+        return Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f);
     }
 }
