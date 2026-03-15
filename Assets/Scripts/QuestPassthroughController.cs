@@ -118,7 +118,7 @@ public class QuestPassthroughController : MonoBehaviour
             return;
 
         cam.clearFlags = CameraClearFlags.SolidColor;
-        var c = cam.backgroundColor;
-        cam.backgroundColor = new Color(c.r, c.g, c.b, 0f);
+        // Transparent black avoids adding a global white haze over passthrough.
+        cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
     }
 }
