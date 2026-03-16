@@ -13,11 +13,13 @@ public class StartButtonInteractor : MonoBehaviour
     public RectTransform targetRect;
     public Image targetImage;
     public Image progressImage;
+    public Graphic iconToReplaceWhileProgress;
     public TMP_Text statusText;
 
     [Header("Visuals")]
     public Color normalColor = new Color(0.16f, 0.43f, 0.96f, 1f);
     public Color hoverColor = new Color(0.08f, 0.23f, 0.58f, 1f);
+    public bool useHoverTint = false;
 
     [Header("Copy")]
     public string instructionText = "Click the start button";
@@ -33,7 +35,8 @@ public class StartButtonInteractor : MonoBehaviour
 
     private void Awake()
     {
-        ApplyColor(normalColor);
+        if (useHoverTint)
+            ApplyColor(normalColor);
         SetProgress(0f);
         if (statusText != null)
             statusText.text = instructionText;
@@ -41,12 +44,13 @@ public class StartButtonInteractor : MonoBehaviour
 
     private void Update()
     {
-        if (modeManager == null || targetRect == null || targetImage == null)
+        if (modeManager == null || targetRect == null)
             return;
 
         if (modeManager.IsControllerSwitchDialogOpen)
         {
-            ApplyColor(normalColor);
+            if (useHoverTint)
+                ApplyColor(normalColor);
             ResetHoverState();
             return;
         }
@@ -59,7 +63,8 @@ public class StartButtonInteractor : MonoBehaviour
 
         bool hasRay = modeManager.TryGetInteractionRay(out Ray ray);
         bool hovering = hasRay && IsRayPointingAtRect(ray, targetRect);
-        ApplyColor(hovering ? hoverColor : normalColor);
+        if (useHoverTint)
+            ApplyColor(hovering ? hoverColor : normalColor);
 
         if (modeManager.CurrentMode == ControlModeManager.ControlMode.HeadGaze)
             HandleHeadGaze(hovering);
@@ -129,9 +134,12 @@ public class StartButtonInteractor : MonoBehaviour
 
     private void SetProgress(float value)
     {
-        if (progressImage == null)
-            return;
-        progressImage.fillAmount = Mathf.Clamp01(value);
+        float clamped = Mathf.Clamp01(value);
+        if (progressImage != null)
+            progressImage.fillAmount = clamped;
+
+        if (iconToReplaceWhileProgress != null)
+            iconToReplaceWhileProgress.enabled = clamped <= 0.001f;
     }
 
     private static bool IsRayPointingAtRect(Ray ray, RectTransform rect)

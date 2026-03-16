@@ -30,8 +30,16 @@ public static class VRVideoPlayerSetup
 
         // Welcome panel in front of the user.
         GameObject welcomeScreen = new GameObject("WelcomeScreen");
-        welcomeScreen.transform.position = new Vector3(0f, 1.55f, 2.4f);
-        welcomeScreen.transform.rotation = Quaternion.identity;
+        if (TryGetWelcomeScreenPose(1.5f, out Vector3 welcomePos, out Quaternion welcomeRot))
+        {
+            welcomeScreen.transform.position = welcomePos;
+            welcomeScreen.transform.rotation = welcomeRot;
+        }
+        else
+        {
+            welcomeScreen.transform.position = new Vector3(0.8325f, 2.27f, 1.5f);
+            welcomeScreen.transform.rotation = Quaternion.identity;
+        }
 
         BuildWelcomeCanvas(
             welcomeScreen.transform,
@@ -39,6 +47,7 @@ public static class VRVideoPlayerSetup
             out Image buttonImage,
             out TextMeshProUGUI subtitleText,
             out Image progressImage,
+            out Image startButtonIconImage,
             out RectTransform switchRect,
             out Image switchImage,
             out Image switchIconImage,
@@ -72,6 +81,7 @@ public static class VRVideoPlayerSetup
         startInteractor.targetRect = buttonRect;
         startInteractor.targetImage = buttonImage;
         startInteractor.progressImage = progressImage;
+        startInteractor.iconToReplaceWhileProgress = startButtonIconImage;
         startInteractor.statusText = subtitleText;
         startInteractor.dwellSeconds = 1.0f;
 
@@ -85,6 +95,36 @@ public static class VRVideoPlayerSetup
         var go = GameObject.Find(name);
         if (go != null)
             Undo.DestroyObjectImmediate(go);
+    }
+
+    private static bool TryGetWelcomeScreenPose(float distanceMeters, out Vector3 position, out Quaternion rotation)
+    {
+        // Keep this aligned with current backplate setup:
+        // panel size 925x600 with canvas scale 0.0018 => half extents 0.8325m x 0.54m.
+        const float halfPanelWidthMeters = 0.8325f;
+        const float halfPanelHeightMeters = 0.54f;
+        position = new Vector3(0f, 1.55f, distanceMeters);
+        rotation = Quaternion.identity;
+
+        // In editor setup, only trust the XR center-eye anchor if present.
+        // Generic camera fallbacks (Scene/Game cameras) can place UI off-center.
+        var centerEye = GameObject.Find("CenterEyeAnchor");
+        if (centerEye == null)
+            return false;
+
+        Vector3 forward = centerEye.transform.forward;
+        forward.y = 0f; // Keep UI upright while still centered relative to current gaze direction.
+        if (forward.sqrMagnitude < 0.0001f)
+            forward = centerEye.transform.forward;
+        if (forward.sqrMagnitude < 0.0001f)
+            forward = Vector3.forward;
+        forward.Normalize();
+
+        position = centerEye.transform.position + forward * Mathf.Max(0.5f, distanceMeters);
+        position += centerEye.transform.right * halfPanelWidthMeters;
+        position += Vector3.up * halfPanelHeightMeters;
+        rotation = Quaternion.LookRotation(forward, Vector3.up);
+        return true;
     }
 
     private static Sprite LoadSpriteFromImagesFile(string fileName)
@@ -194,12 +234,40 @@ public static class VRVideoPlayerSetup
         return null;
     }
 
+    private static GameObject LoadRequiredPrefab(string path, string displayName)
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        if (prefab == null)
+        {
+            throw new System.InvalidOperationException(
+                $"Required UI Set prefab '{displayName}' was not found at '{path}'. " +
+                "Please copy that prefab into Assets/Prefabs/UI and run Setup Scene again.");
+        }
+        return prefab;
+    }
+
+    private static Image FindRequiredUiSetIconImage(Transform root)
+    {
+        if (root == null)
+            return null;
+
+        var images = root.GetComponentsInChildren<Image>(true);
+        foreach (var img in images)
+        {
+            if (img != null && img.gameObject.tag == "QDSUIIcon")
+                return img;
+        }
+
+        return null;
+    }
+
     private static Transform BuildWelcomeCanvas(
         Transform parent,
         out RectTransform buttonRect,
         out Image buttonImage,
         out TextMeshProUGUI subtitleText,
         out Image progressImage,
+        out Image startButtonIconImage,
         out RectTransform switchRect,
         out Image switchImage,
         out Image switchIconImage,
@@ -216,6 +284,7 @@ public static class VRVideoPlayerSetup
         buttonImage = null;
         subtitleText = null;
         progressImage = null;
+        startButtonIconImage = null;
         switchRect = null;
         switchImage = null;
         switchIconImage = null;
@@ -228,67 +297,96 @@ public static class VRVideoPlayerSetup
         switchDialogConfirmImage = null;
         switchDialogConfirmProgressImage = null;
 
-        var canvasObj = new GameObject("WelcomeCanvas");
-        canvasObj.transform.SetParent(parent, false);
-        canvasObj.transform.localPosition = new Vector3(0f, -0.15f, 0.45f);
-        canvasObj.transform.localRotation = Quaternion.identity;
-        canvasObj.transform.localScale = Vector3.one * 0.0018f;
-
-        var canvas = canvasObj.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.WorldSpace;
-        canvas.sortingOrder = 10;
-
-        var scaler = canvasObj.AddComponent<CanvasScaler>();
-        scaler.dynamicPixelsPerUnit = 10f;
-        scaler.referencePixelsPerUnit = 100f;
-
-        canvasObj.AddComponent<GraphicRaycaster>();
-
-        var canvasRt = canvasObj.GetComponent<RectTransform>();
-        canvasRt.sizeDelta = new Vector2(1600f, 1080f);
-
-        var panelObj = new GameObject("WelcomeBackdrop", typeof(RectTransform), typeof(Image), typeof(Outline));
-        panelObj.transform.SetParent(canvasObj.transform, false);
-        var panelRt = panelObj.GetComponent<RectTransform>();
-        panelRt.anchorMin = new Vector2(0.5f, 0.5f);
-        panelRt.anchorMax = new Vector2(0.5f, 0.5f);
-        panelRt.pivot = new Vector2(0.5f, 0.5f);
-        panelRt.sizeDelta = new Vector2(1480f, 960f);
-
         var rounded = CreateRoundedSprite(512, 512, 24);
-        var panelImage = panelObj.GetComponent<Image>();
-        panelImage.sprite = rounded;
-        panelImage.type = Image.Type.Sliced;
-        panelImage.color = new Color(0.004f, 0.005f, 0.008f, 1f);
+        GameObject canvasObj;
+        GameObject panelObj;
+        RectTransform panelRt;
+        if (!TryCreateMetaUiSetBackplate(parent, out canvasObj, out panelObj, out panelRt))
+        {
+            throw new System.InvalidOperationException(
+                "UI Set backplate prefab is required but could not be created. " +
+                "Expected prefab at Assets/Prefabs/UI/EmptyUIBackplateWithCanvas.prefab " +
+                "with children CanvasRoot and Surface/UIBackplate.");
+        }
 
-        var outline = panelObj.GetComponent<Outline>();
-        outline.effectColor = new Color(0.80f, 0.87f, 0.96f, 0.26f);
-        outline.effectDistance = new Vector2(2f, -2f);
-        outline.useGraphicAlpha = true;
+        // Host app content directly on the backplate rect.
+        var contentHostObj = new GameObject("ContentHost", typeof(RectTransform));
+        contentHostObj.transform.SetParent(panelObj.transform, false);
+        var contentHostRt = contentHostObj.GetComponent<RectTransform>();
+        contentHostRt.anchorMin = Vector2.zero;
+        contentHostRt.anchorMax = Vector2.one;
+        contentHostRt.offsetMin = Vector2.zero;
+        contentHostRt.offsetMax = Vector2.zero;
 
-        var titleObj = new GameObject("Title", typeof(RectTransform), typeof(TextMeshProUGUI));
-        titleObj.transform.SetParent(panelObj.transform, false);
+        var contentRootObj = new GameObject("ContentRoot", typeof(RectTransform), typeof(VerticalLayoutGroup));
+        contentRootObj.transform.SetParent(contentHostObj.transform, false);
+        var contentRootRt = contentRootObj.GetComponent<RectTransform>();
+        contentRootRt.anchorMin = Vector2.zero;
+        contentRootRt.anchorMax = Vector2.one;
+        contentRootRt.offsetMin = Vector2.zero;
+        contentRootRt.offsetMax = Vector2.zero;
+        var contentLayout = contentRootObj.GetComponent<VerticalLayoutGroup>();
+        contentLayout.padding = new RectOffset(36, 36, 36, 36);
+        contentLayout.spacing = 24f;
+        contentLayout.childAlignment = TextAnchor.UpperCenter;
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = false;
+        contentLayout.childForceExpandWidth = true;
+        contentLayout.childForceExpandHeight = false;
+
+        var topRowObj = new GameObject("TopRow", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        topRowObj.transform.SetParent(contentRootObj.transform, false);
+        var topRowLayout = topRowObj.GetComponent<HorizontalLayoutGroup>();
+        topRowLayout.spacing = 14f;
+        topRowLayout.childAlignment = TextAnchor.MiddleLeft;
+        topRowLayout.childControlWidth = true;
+        topRowLayout.childControlHeight = false;
+        topRowLayout.childForceExpandWidth = false;
+        topRowLayout.childForceExpandHeight = false;
+        topRowObj.GetComponent<LayoutElement>().preferredHeight = 120f;
+
+        var titleObj = new GameObject("Title", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
+        titleObj.transform.SetParent(topRowObj.transform, false);
         var titleRt = titleObj.GetComponent<RectTransform>();
-        titleRt.anchorMin = new Vector2(0.5f, 0.5f);
-        titleRt.anchorMax = new Vector2(0.5f, 0.5f);
-        titleRt.pivot = new Vector2(0.5f, 0.5f);
-        titleRt.anchoredPosition = new Vector2(0f, 170f);
-        titleRt.sizeDelta = new Vector2(1200f, 160f);
+        titleRt.sizeDelta = new Vector2(760f, 110f);
+        var titleLayoutElement = titleObj.GetComponent<LayoutElement>();
+        titleLayoutElement.minWidth = 0f;
+        titleLayoutElement.preferredWidth = 760f;
+        titleLayoutElement.flexibleWidth = 1f;
         var titleText = titleObj.GetComponent<TextMeshProUGUI>();
         titleText.text = "Hello world";
         titleText.fontSize = 110f;
-        titleText.alignment = TextAlignmentOptions.Center;
+        titleText.alignment = TextAlignmentOptions.MidlineLeft;
         titleText.textWrappingMode = TextWrappingModes.NoWrap;
         titleText.color = Color.white;
 
-        var subtitleObj = new GameObject("Subtitle", typeof(RectTransform), typeof(TextMeshProUGUI));
-        subtitleObj.transform.SetParent(panelObj.transform, false);
+        var switchClusterObj = new GameObject("SwitchCluster", typeof(RectTransform), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        switchClusterObj.transform.SetParent(topRowObj.transform, false);
+        var switchClusterLayout = switchClusterObj.GetComponent<HorizontalLayoutGroup>();
+        switchClusterLayout.spacing = 10f;
+        switchClusterLayout.childAlignment = TextAnchor.MiddleRight;
+        switchClusterLayout.childControlWidth = false;
+        switchClusterLayout.childControlHeight = false;
+        switchClusterLayout.childForceExpandWidth = false;
+        switchClusterLayout.childForceExpandHeight = false;
+        switchClusterObj.GetComponent<LayoutElement>().flexibleWidth = 0f;
+
+        var bodyObj = new GameObject("Body", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        bodyObj.transform.SetParent(contentRootObj.transform, false);
+        bodyObj.GetComponent<LayoutElement>().preferredHeight = 420f;
+        var bodyLayout = bodyObj.GetComponent<VerticalLayoutGroup>();
+        bodyLayout.spacing = 24f;
+        bodyLayout.childAlignment = TextAnchor.UpperCenter;
+        bodyLayout.childControlWidth = false;
+        bodyLayout.childControlHeight = false;
+        bodyLayout.childForceExpandWidth = false;
+        bodyLayout.childForceExpandHeight = false;
+
+        var subtitleObj = new GameObject("Subtitle", typeof(RectTransform), typeof(TextMeshProUGUI), typeof(LayoutElement));
+        subtitleObj.transform.SetParent(bodyObj.transform, false);
         var subtitleRt = subtitleObj.GetComponent<RectTransform>();
-        subtitleRt.anchorMin = new Vector2(0.5f, 0.5f);
-        subtitleRt.anchorMax = new Vector2(0.5f, 0.5f);
-        subtitleRt.pivot = new Vector2(0.5f, 0.5f);
-        subtitleRt.anchoredPosition = new Vector2(0f, -140f);
-        subtitleRt.sizeDelta = new Vector2(1200f, 120f);
+        subtitleRt.sizeDelta = new Vector2(960f, 110f);
+        subtitleObj.GetComponent<LayoutElement>().preferredWidth = 960f;
         subtitleText = subtitleObj.GetComponent<TextMeshProUGUI>();
         subtitleText.text = "Click the start button";
         subtitleText.fontSize = 62f;
@@ -296,47 +394,35 @@ public static class VRVideoPlayerSetup
         subtitleText.textWrappingMode = TextWrappingModes.NoWrap;
         subtitleText.color = new Color(0.90f, 0.95f, 1f, 0.95f);
 
-        var buttonObj = new GameObject("PrimaryButton", typeof(RectTransform), typeof(Image), typeof(Outline));
-        buttonObj.transform.SetParent(panelObj.transform, false);
+        GameObject buttonObj = null;
+        const string startButtonPrefabPath = "Assets/Prefabs/UI/UnityUIButtonBased/TextTileButton_IconAndLabel_Regular_UnityUIButton.prefab";
+        GameObject startButtonPrefab = LoadRequiredPrefab(startButtonPrefabPath, "TextTileButton_IconAndLabel_Regular_UnityUIButton");
+
+        buttonObj = PrefabUtility.InstantiatePrefab(startButtonPrefab, bodyObj.transform) as GameObject;
+        buttonObj.name = "PrimaryButton";
         buttonRect = buttonObj.GetComponent<RectTransform>();
-        buttonRect.anchorMin = new Vector2(0.5f, 0.5f);
-        buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
-        buttonRect.pivot = new Vector2(0.5f, 0.5f);
-        buttonRect.anchoredPosition = new Vector2(0f, -300f);
-        buttonRect.sizeDelta = new Vector2(560f, 130f);
 
-        buttonImage = buttonObj.GetComponent<Image>();
-        buttonImage.sprite = rounded;
-        buttonImage.type = Image.Type.Sliced;
-        buttonImage.color = new Color(0.16f, 0.43f, 0.96f, 1f);
+        var background = buttonObj.transform.Find("Content/Background");
+        buttonImage = background != null
+            ? background.GetComponent<Image>()
+            : buttonObj.GetComponentInChildren<Image>(true);
 
-        var buttonOutline = buttonObj.GetComponent<Outline>();
-        buttonOutline.effectColor = new Color(0.72f, 0.86f, 1f, 0.32f);
-        buttonOutline.effectDistance = new Vector2(2f, -2f);
-        buttonOutline.useGraphicAlpha = true;
-
-        var buttonTextObj = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
-        buttonTextObj.transform.SetParent(buttonObj.transform, false);
-        var buttonTextRect = buttonTextObj.GetComponent<RectTransform>();
-        buttonTextRect.anchorMin = Vector2.zero;
-        buttonTextRect.anchorMax = Vector2.one;
-        buttonTextRect.offsetMin = Vector2.zero;
-        buttonTextRect.offsetMax = Vector2.zero;
-        var buttonText = buttonTextObj.GetComponent<TextMeshProUGUI>();
-        buttonText.text = "Start";
-        buttonText.fontSize = 56f;
-        buttonText.alignment = TextAlignmentOptions.Center;
-        buttonText.textWrappingMode = TextWrappingModes.NoWrap;
-        buttonText.color = Color.white;
+        startButtonIconImage = FindRequiredUiSetIconImage(buttonObj.transform);
+        if (startButtonIconImage == null)
+        {
+            throw new System.InvalidOperationException(
+                "Required UI Set icon with tag 'QDSUIIcon' was not found on Start button prefab. " +
+                "This setup expects a UI Set button variant that includes an icon.");
+        }
 
         var progressObj = new GameObject("DwellProgress", typeof(RectTransform), typeof(Image));
-        progressObj.transform.SetParent(buttonObj.transform, false);
+        progressObj.transform.SetParent(startButtonIconImage.transform, false);
         var progressRect = progressObj.GetComponent<RectTransform>();
-        progressRect.anchorMin = new Vector2(0.5f, 0.5f);
-        progressRect.anchorMax = new Vector2(0.5f, 0.5f);
+        progressRect.anchorMin = Vector2.zero;
+        progressRect.anchorMax = Vector2.one;
         progressRect.pivot = new Vector2(0.5f, 0.5f);
-        progressRect.anchoredPosition = new Vector2(215f, 0f);
-        progressRect.sizeDelta = new Vector2(76f, 76f);
+        progressRect.anchoredPosition = Vector2.zero;
+        progressRect.sizeDelta = Vector2.zero;
 
         progressImage = progressObj.GetComponent<Image>();
         progressImage.sprite = CreateCircleSprite(192);
@@ -348,12 +434,8 @@ public static class VRVideoPlayerSetup
         progressImage.color = new Color(0.84f, 0.93f, 1f, 0.9f);
 
         var switchObj = new GameObject("ModeSwitchButton", typeof(RectTransform), typeof(Image), typeof(Outline));
-        switchObj.transform.SetParent(panelObj.transform, false);
+        switchObj.transform.SetParent(switchClusterObj.transform, false);
         switchRect = switchObj.GetComponent<RectTransform>();
-        switchRect.anchorMin = new Vector2(1f, 1f);
-        switchRect.anchorMax = new Vector2(1f, 1f);
-        switchRect.pivot = new Vector2(1f, 1f);
-        switchRect.anchoredPosition = new Vector2(-24f, -20f);
         switchRect.sizeDelta = new Vector2(100f, 100f);
 
         switchImage = switchObj.GetComponent<Image>();
@@ -381,12 +463,12 @@ public static class VRVideoPlayerSetup
         switchIconImage.enabled = true;
 
         var switchProgressObj = new GameObject("ModeSwitchDwellProgress", typeof(RectTransform), typeof(Image));
-        switchProgressObj.transform.SetParent(panelObj.transform, false);
+        switchProgressObj.transform.SetParent(switchObj.transform, false);
         var switchProgressRect = switchProgressObj.GetComponent<RectTransform>();
-        switchProgressRect.anchorMin = new Vector2(1f, 1f);
-        switchProgressRect.anchorMax = new Vector2(1f, 1f);
-        switchProgressRect.pivot = new Vector2(1f, 1f);
-        switchProgressRect.anchoredPosition = new Vector2(-138f, -22f); // left of icon button (outside)
+        switchProgressRect.anchorMin = new Vector2(1f, 0.5f);
+        switchProgressRect.anchorMax = new Vector2(1f, 0.5f);
+        switchProgressRect.pivot = new Vector2(0f, 0.5f);
+        switchProgressRect.anchoredPosition = new Vector2(10f, 0f);
         switchProgressRect.sizeDelta = new Vector2(52f, 52f);
 
         switchDwellProgressImage = switchProgressObj.GetComponent<Image>();
@@ -400,7 +482,7 @@ public static class VRVideoPlayerSetup
         switchDwellProgressImage.raycastTarget = false;
 
         switchDialogRoot = new GameObject("ModeSwitchDialog", typeof(RectTransform), typeof(Image), typeof(Outline));
-        switchDialogRoot.transform.SetParent(panelObj.transform, false);
+        switchDialogRoot.transform.SetParent(contentHostObj.transform, false);
         var dialogRect = switchDialogRoot.GetComponent<RectTransform>();
         dialogRect.anchorMin = new Vector2(0.5f, 0.5f);
         dialogRect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -547,6 +629,74 @@ public static class VRVideoPlayerSetup
         switchDialogRoot.SetActive(false);
 
         return panelObj.transform;
+    }
+
+    private static bool TryCreateMetaUiSetBackplate(
+        Transform parent,
+        out GameObject canvasObj,
+        out GameObject panelObj,
+        out RectTransform panelRt)
+    {
+        canvasObj = null;
+        panelObj = null;
+        panelRt = null;
+
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/EmptyUIBackplateWithCanvas.prefab");
+        if (prefab == null)
+            return false;
+
+        GameObject root = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
+        if (root == null)
+            return false;
+
+        root.name = "WelcomeCanvas";
+        root.transform.SetParent(parent, false);
+        root.transform.localPosition = new Vector3(0f, -0.15f, 0.45f);
+        root.transform.localRotation = Quaternion.identity;
+        root.transform.localScale = Vector3.one;
+
+        Transform canvasRoot = root.transform.Find("CanvasRoot");
+        // In the copied UI Set prefab, UIBackplate is directly under CanvasRoot.
+        Transform backplate = canvasRoot != null ? canvasRoot.Find("UIBackplate") : null;
+        if (canvasRoot == null || backplate == null)
+        {
+            Object.DestroyImmediate(root);
+            return false;
+        }
+
+        canvasObj = canvasRoot.gameObject;
+        panelObj = backplate.gameObject;
+        canvasRoot.localScale = Vector3.one * 0.0018f;
+
+        var canvas = canvasObj.GetComponent<Canvas>();
+        if (canvas != null)
+        {
+            canvas.renderMode = RenderMode.WorldSpace;
+            canvas.sortingOrder = 10;
+        }
+
+        var canvasRect = canvasObj.GetComponent<RectTransform>();
+        if (canvasRect != null)
+            canvasRect.sizeDelta = new Vector2(1600f, 1080f);
+
+        panelRt = panelObj.GetComponent<RectTransform>();
+        if (panelRt == null)
+            panelRt = panelObj.AddComponent<RectTransform>();
+
+        panelRt.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRt.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRt.pivot = new Vector2(0.5f, 0.5f);
+        panelRt.anchoredPosition = Vector2.zero;
+        panelRt.sizeDelta = new Vector2(925f, 600f);
+
+        // Disable package layout components so our own layout groups control positioning.
+        var layoutGroups = panelObj.GetComponents<LayoutGroup>();
+        foreach (var group in layoutGroups)
+            group.enabled = false;
+
+        Debug.Log("VRVideoPlayerSetup: Using UI Set backplate prefab.");
+
+        return true;
     }
 
     private static Sprite CreateRoundedSprite(int width, int height, int radius)
