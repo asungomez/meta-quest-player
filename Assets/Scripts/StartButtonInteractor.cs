@@ -22,16 +22,10 @@ public class StartButtonInteractor : MonoBehaviour
     [Header("Head-gaze dwell")]
     public float dwellSeconds = 1.0f;
 
-    [Header("Debug")]
-    public bool debugLogs = true;
-
     private float dwellTimer;
     private bool activatedThisHover;
     private int clickCount;
     private Button nativeButton;
-    private bool lastGazeHover;
-    private bool lastControllerHover;
-    private bool lastControllerRayAvailable;
 
     private void Awake()
     {
@@ -40,20 +34,6 @@ public class StartButtonInteractor : MonoBehaviour
             nativeButton = targetRect.GetComponentInChildren<Button>(true);
             if (nativeButton != null)
                 nativeButton.onClick.AddListener(HandleNativeButtonClick);
-        }
-
-        if (debugLogs)
-        {
-            if (nativeButton == null)
-            {
-                Debug.LogWarning("StartButtonInteractor: No native Unity Button found under targetRect. Native click events will not fire.");
-            }
-            else
-            {
-                Debug.Log(
-                    $"StartButtonInteractor: Bound native button '{nativeButton.gameObject.name}' " +
-                    $"(activeInHierarchy={nativeButton.gameObject.activeInHierarchy}, interactable={nativeButton.interactable}).");
-            }
         }
 
         SetProgress(0f);
@@ -80,30 +60,6 @@ public class StartButtonInteractor : MonoBehaviour
 
         bool gazeHasRay = modeManager.TryGetHeadGazeRay(out Ray gazeRay);
         bool gazeHovering = gazeHasRay && IsRayPointingAtRect(gazeRay, targetRect);
-
-        bool controllerHasRay = modeManager.TryGetRightControllerRay(out Ray controllerRay);
-        bool controllerHovering = controllerHasRay && IsRayPointingAtRect(controllerRay, targetRect);
-
-        if (debugLogs)
-        {
-            if (controllerHasRay != lastControllerRayAvailable)
-            {
-                lastControllerRayAvailable = controllerHasRay;
-                Debug.Log($"StartButtonInteractor: Right controller ray available = {controllerHasRay}");
-            }
-
-            if (gazeHovering != lastGazeHover)
-            {
-                lastGazeHover = gazeHovering;
-                Debug.Log($"StartButtonInteractor: Gaze hover = {gazeHovering}");
-            }
-
-            if (controllerHovering != lastControllerHover)
-            {
-                lastControllerHover = controllerHovering;
-                Debug.Log($"StartButtonInteractor: Controller hover = {controllerHovering}");
-            }
-        }
 
         HandleHeadGaze(gazeHovering);
     }
@@ -137,9 +93,6 @@ public class StartButtonInteractor : MonoBehaviour
 
     private void HandleNativeButtonClick()
     {
-        if (debugLogs)
-            Debug.Log("StartButtonInteractor: Native Button.onClick fired.");
-
         clickCount++;
         UpdateClickedText();
     }

@@ -63,6 +63,7 @@ public static class VRVideoPlayerSetup
 
         var modeManager = welcomeRoot.AddComponent<ControlModeManager>();
         modeManager.headGazePointer = headPointer;
+        modeManager.showControllerPointer = false; // Use native ISDK controller ray cursor.
         modeManager.switchButtonRect = switchRect;
         modeManager.switchButtonImage = switchImage;
         modeManager.switchButtonIconImage = switchIconImage;
@@ -111,7 +112,6 @@ public static class VRVideoPlayerSetup
         {
             if (!rayInteraction.activeSelf)
                 rayInteraction.SetActive(true);
-            Debug.Log($"VRVideoPlayerSetup: ISDK_RayInteraction activeInHierarchy={rayInteraction.activeInHierarchy}");
         }
 
         var pointableCanvasModuleType = FindTypeInLoadedAssemblies("Oculus.Interaction.PointableCanvasModule");
@@ -130,7 +130,6 @@ public static class VRVideoPlayerSetup
             if (pointableCanvasModuleType != null)
             {
                 pointableCanvasModuleObject.AddComponent(pointableCanvasModuleType);
-                Debug.Log("VRVideoPlayerSetup: Created PointableCanvasModule host with EventSystem.");
             }
             else
             {
@@ -146,8 +145,6 @@ public static class VRVideoPlayerSetup
                 pointableCanvasModuleObject.AddComponent<EventSystem>();
             if (pointableCanvasModuleType != null && pointableCanvasModuleObject.GetComponent(pointableCanvasModuleType) == null)
                 pointableCanvasModuleObject.AddComponent(pointableCanvasModuleType);
-
-            Debug.Log($"VRVideoPlayerSetup: PointableCanvasModule host='{pointableCanvasModuleObject.name}', activeInHierarchy={pointableCanvasModuleObject.activeInHierarchy}");
         }
     }
 
