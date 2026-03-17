@@ -14,6 +14,8 @@ public class StartButtonInteractor : MonoBehaviour
     public Image progressImage;
     public Graphic iconToReplaceWhileProgress;
     public TMP_Text statusText;
+    public GameObject controllerOnlyTooltipRoot;
+    public TMP_Text controllerOnlyTooltipText;
 
     [Header("Copy")]
     public string instructionText = "Click the start button";
@@ -21,6 +23,8 @@ public class StartButtonInteractor : MonoBehaviour
 
     [Header("Head-gaze dwell")]
     public float dwellSeconds = 1.0f;
+    public bool controllerOnly = false;
+    public string controllerOnlyTooltip = "This button is only available with controllers.";
 
     private float dwellTimer;
     private bool activatedThisHover;
@@ -37,8 +41,10 @@ public class StartButtonInteractor : MonoBehaviour
         }
 
         SetProgress(0f);
-        if (statusText != null)
-            statusText.text = instructionText;
+        SetControllerOnlyTooltipVisible(false);
+        if (controllerOnlyTooltipText != null)
+            controllerOnlyTooltipText.text = controllerOnlyTooltip;
+        RefreshStatusText();
     }
 
     private void OnDestroy()
@@ -55,12 +61,24 @@ public class StartButtonInteractor : MonoBehaviour
         if (modeManager.IsControllerSwitchDialogOpen)
         {
             ResetHoverState();
+            SetControllerOnlyTooltipVisible(false);
             return;
         }
 
         bool gazeHasRay = modeManager.TryGetHeadGazeRay(out Ray gazeRay);
         bool gazeHovering = gazeHasRay && IsRayPointingAtRect(gazeRay, targetRect);
 
+        if (controllerOnly)
+        {
+            // In controller-only mode, gaze only shows tooltip and never triggers dwell/click.
+            SetControllerOnlyTooltipVisible(gazeHovering);
+            if (gazeHovering)
+                ResetHoverState();
+            SetProgress(0f);
+            return;
+        }
+
+        SetControllerOnlyTooltipVisible(false);
         HandleHeadGaze(gazeHovering);
     }
 
@@ -99,8 +117,7 @@ public class StartButtonInteractor : MonoBehaviour
 
     private void UpdateClickedText()
     {
-        if (statusText != null)
-            statusText.text = string.Format(clickedTextFormat, clickCount);
+        RefreshStatusText();
     }
 
     private void ResetHoverState()
@@ -118,6 +135,24 @@ public class StartButtonInteractor : MonoBehaviour
 
         if (iconToReplaceWhileProgress != null)
             iconToReplaceWhileProgress.enabled = clamped <= 0.001f;
+    }
+
+    private void RefreshStatusText()
+    {
+        if (statusText == null)
+            return;
+
+        statusText.text = clickCount > 0
+            ? string.Format(clickedTextFormat, clickCount)
+            : instructionText;
+    }
+
+    private void SetControllerOnlyTooltipVisible(bool visible)
+    {
+        if (controllerOnlyTooltipRoot == null)
+            return;
+        if (controllerOnlyTooltipRoot.activeSelf != visible)
+            controllerOnlyTooltipRoot.SetActive(visible);
     }
 
     private static bool IsRayPointingAtRect(Ray ray, RectTransform rect)

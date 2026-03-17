@@ -49,6 +49,8 @@ public static class VRVideoPlayerSetup
             out TextMeshProUGUI subtitleText,
             out Image progressImage,
             out Image startButtonIconImage,
+            out GameObject startButtonTooltipRoot,
+            out TextMeshProUGUI startButtonTooltipText,
             out RectTransform switchRect,
             out Image switchImage,
             out Image switchIconImage,
@@ -84,7 +86,11 @@ public static class VRVideoPlayerSetup
         startInteractor.progressImage = progressImage;
         startInteractor.iconToReplaceWhileProgress = startButtonIconImage;
         startInteractor.statusText = subtitleText;
+        startInteractor.controllerOnlyTooltipRoot = startButtonTooltipRoot;
+        startInteractor.controllerOnlyTooltipText = startButtonTooltipText;
         startInteractor.dwellSeconds = 1.0f;
+        startInteractor.controllerOnly = true;
+        startInteractor.controllerOnlyTooltip = "This button is only available with controllers.";
 
         EnsureNativeUiRayInteractionActive();
 
@@ -367,6 +373,8 @@ public static class VRVideoPlayerSetup
         out TextMeshProUGUI subtitleText,
         out Image progressImage,
         out Image startButtonIconImage,
+        out GameObject startButtonTooltipRoot,
+        out TextMeshProUGUI startButtonTooltipText,
         out RectTransform switchRect,
         out Image switchImage,
         out Image switchIconImage,
@@ -384,6 +392,8 @@ public static class VRVideoPlayerSetup
         subtitleText = null;
         progressImage = null;
         startButtonIconImage = null;
+        startButtonTooltipRoot = null;
+        startButtonTooltipText = null;
         switchRect = null;
         switchImage = null;
         switchIconImage = null;
@@ -532,6 +542,32 @@ public static class VRVideoPlayerSetup
         progressImage.fillAmount = 0f;
         progressImage.color = new Color(0.84f, 0.93f, 1f, 0.9f);
         progressImage.raycastTarget = false;
+
+        GameObject tooltipPrefab =
+            AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/Tooltip/Tooltip.prefab") ??
+            AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/tooltip.prefab");
+        if (tooltipPrefab != null)
+        {
+            startButtonTooltipRoot = PrefabUtility.InstantiatePrefab(tooltipPrefab, buttonObj.transform) as GameObject;
+            if (startButtonTooltipRoot != null)
+            {
+                startButtonTooltipRoot.name = "ControllerOnlyTooltip";
+                var tooltipRt = startButtonTooltipRoot.GetComponent<RectTransform>();
+                if (tooltipRt != null)
+                {
+                    tooltipRt.anchorMin = new Vector2(0.5f, 1f);
+                    tooltipRt.anchorMax = new Vector2(0.5f, 1f);
+                    tooltipRt.pivot = new Vector2(0.5f, 0f);
+                    tooltipRt.anchoredPosition = new Vector2(0f, 4f);
+                }
+
+                startButtonTooltipText = startButtonTooltipRoot.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (startButtonTooltipText != null)
+                    startButtonTooltipText.raycastTarget = false;
+
+                startButtonTooltipRoot.SetActive(false);
+            }
+        }
 
         var switchObj = new GameObject("ModeSwitchButton", typeof(RectTransform), typeof(Image), typeof(Outline));
         switchObj.transform.SetParent(switchClusterObj.transform, false);
