@@ -53,11 +53,13 @@ public class ControlModeManager : MonoBehaviour
 
     public ControlMode CurrentMode { get; private set; } = ControlMode.HeadGaze;
     public bool ControllerSelectDownThisFrame { get; private set; }
+    public bool RightIndexTriggerDownThisFrame { get; private set; }
     public bool IsControllerSwitchDialogOpen { get; private set; }
 
     private float switchDwellTimer;
     private float dialogDwellTimer;
     private bool previousControllerSelect;
+    private bool previousRightIndexTrigger;
     private Camera gazeCamera;
     private Transform controllerPointerVisual;
     private bool hasWarnedNoControllerRay;
@@ -80,6 +82,15 @@ public class ControlModeManager : MonoBehaviour
     private void Update()
     {
         ControllerSelectDownThisFrame = false;
+        RightIndexTriggerDownThisFrame = false;
+
+        bool controllerPressed = GetControllerSelectPressed();
+        ControllerSelectDownThisFrame = controllerPressed && !previousControllerSelect;
+        previousControllerSelect = controllerPressed;
+
+        bool rightIndexTriggerPressed = GetRightIndexTriggerPressed();
+        RightIndexTriggerDownThisFrame = rightIndexTriggerPressed && !previousRightIndexTrigger;
+        previousRightIndexTrigger = rightIndexTriggerPressed;
 
         bool hasRay = TryGetInteractionRay(out Ray ray);
         bool hovering = hasRay && switchButtonRect != null && IsRayPointingAtRect(ray, switchButtonRect);
@@ -87,7 +98,8 @@ public class ControlModeManager : MonoBehaviour
             switchButtonImage.color = hovering ? hoverColor : normalColor;
 
         UpdateSwitchDwellProgressVisual(hovering);
-        UpdateControllerPointerVisual(hasRay, ray);
+        bool hasControllerRayForVisual = TryGetRightControllerRay(out Ray controllerRayForVisual);
+        UpdateControllerPointerVisual(hasControllerRayForVisual, controllerRayForVisual);
 
         if (IsControllerSwitchDialogOpen)
         {
@@ -112,13 +124,8 @@ public class ControlModeManager : MonoBehaviour
                 switchDwellTimer = 0f;
             }
 
-            previousControllerSelect = false;
             return;
         }
-
-        bool controllerPressed = GetControllerSelectPressed();
-        ControllerSelectDownThisFrame = controllerPressed && !previousControllerSelect;
-        previousControllerSelect = controllerPressed;
 
         if (!hasRay && !hasWarnedNoControllerRay)
         {
@@ -153,6 +160,24 @@ public class ControlModeManager : MonoBehaviour
 
         ray = default;
         return false;
+    }
+
+    public bool TryGetHeadGazeRay(out Ray ray)
+    {
+        var cam = ResolveGazeCamera();
+        if (cam != null)
+        {
+            ray = new Ray(cam.transform.position, cam.transform.forward);
+            return true;
+        }
+
+        ray = default;
+        return false;
+    }
+
+    public bool TryGetRightControllerRay(out Ray ray)
+    {
+        return TryGetDeviceRay(InputDeviceCharacteristics.Right | InputDeviceCharacteristics.Controller, out ray);
     }
 
     private void ApplyMode(ControlMode mode)
@@ -334,7 +359,7 @@ public class ControlModeManager : MonoBehaviour
         if (controllerPointerVisual == null)
             return;
 
-        bool visible = CurrentMode == ControlMode.Controller && hasRay;
+        bool visible = hasRay;
         controllerPointerVisual.gameObject.SetActive(visible);
         if (!visible)
             return;
@@ -442,6 +467,22 @@ public class ControlModeManager : MonoBehaviour
     {
         return GetSelectPressedFor(InputDeviceCharacteristics.Right | InputDeviceCharacteristics.Controller) ||
                GetSelectPressedFor(InputDeviceCharacteristics.Left | InputDeviceCharacteristics.Controller);
+    }
+
+    private static bool GetRightIndexTriggerPressed()
+    {
+        var devices = new System.Collections.Generic.List<InputDevice>();
+        InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Right | InputDeviceCharacteristics.Controller, devices);
+        foreach (var device in devices)
+        {
+            if (!device.isValid)
+                continue;
+
+            if (device.TryGetFeatureValue(CommonUsages.triggerButton, out bool pressed) && pressed)
+                return true;
+        }
+
+        return false;
     }
 
     private static bool GetSelectPressedFor(InputDeviceCharacteristics characteristics)

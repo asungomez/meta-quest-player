@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using TMPro;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 /// <summary>
 /// Editor menu to set up a minimal passthrough + welcome screen scene.
@@ -79,11 +80,12 @@ public static class VRVideoPlayerSetup
         var startInteractor = welcomeRoot.AddComponent<StartButtonInteractor>();
         startInteractor.modeManager = modeManager;
         startInteractor.targetRect = buttonRect;
-        startInteractor.targetImage = buttonImage;
         startInteractor.progressImage = progressImage;
         startInteractor.iconToReplaceWhileProgress = startButtonIconImage;
         startInteractor.statusText = subtitleText;
         startInteractor.dwellSeconds = 1.0f;
+
+        EnsureNativeUiRayInteractionActive();
 
         Undo.RegisterCreatedObjectUndo(welcomeRoot, "Create Welcome Root");
         Undo.RegisterCreatedObjectUndo(welcomeScreen, "Create Welcome Screen");
@@ -95,6 +97,106 @@ public static class VRVideoPlayerSetup
         var go = GameObject.Find(name);
         if (go != null)
             Undo.DestroyObjectImmediate(go);
+    }
+
+    private static void EnsureNativeUiRayInteractionActive()
+    {
+        // Required by ISDK for ray-based interaction with PointableCanvas.
+        var rayInteraction = FindSceneObjectByNameIncludingInactive("ISDK_RayInteraction");
+        if (rayInteraction == null)
+        {
+            Debug.LogWarning("VRVideoPlayerSetup: ISDK_RayInteraction object not found. Native controller ray-to-UI may not work.");
+        }
+        else
+        {
+            if (!rayInteraction.activeSelf)
+                rayInteraction.SetActive(true);
+            Debug.Log($"VRVideoPlayerSetup: ISDK_RayInteraction activeInHierarchy={rayInteraction.activeInHierarchy}");
+        }
+
+        var pointableCanvasModuleType = FindTypeInLoadedAssemblies("Oculus.Interaction.PointableCanvasModule");
+        GameObject pointableCanvasModuleObject = null;
+        if (pointableCanvasModuleType != null)
+            pointableCanvasModuleObject = FindSceneObjectWithComponentIncludingInactive(pointableCanvasModuleType);
+        if (pointableCanvasModuleObject == null)
+            pointableCanvasModuleObject = FindSceneObjectByNameIncludingInactive("PointableCanvasModule");
+
+        if (pointableCanvasModuleObject == null)
+        {
+            pointableCanvasModuleObject = new GameObject("PointableCanvasModule");
+            Undo.RegisterCreatedObjectUndo(pointableCanvasModuleObject, "Create PointableCanvasModule");
+            pointableCanvasModuleObject.AddComponent<EventSystem>();
+
+            if (pointableCanvasModuleType != null)
+            {
+                pointableCanvasModuleObject.AddComponent(pointableCanvasModuleType);
+                Debug.Log("VRVideoPlayerSetup: Created PointableCanvasModule host with EventSystem.");
+            }
+            else
+            {
+                Debug.LogWarning("VRVideoPlayerSetup: Could not locate Oculus.Interaction.PointableCanvasModule type. Created EventSystem only.");
+            }
+        }
+        else
+        {
+            if (!pointableCanvasModuleObject.activeSelf)
+                pointableCanvasModuleObject.SetActive(true);
+
+            if (pointableCanvasModuleObject.GetComponent<EventSystem>() == null)
+                pointableCanvasModuleObject.AddComponent<EventSystem>();
+            if (pointableCanvasModuleType != null && pointableCanvasModuleObject.GetComponent(pointableCanvasModuleType) == null)
+                pointableCanvasModuleObject.AddComponent(pointableCanvasModuleType);
+
+            Debug.Log($"VRVideoPlayerSetup: PointableCanvasModule host='{pointableCanvasModuleObject.name}', activeInHierarchy={pointableCanvasModuleObject.activeInHierarchy}");
+        }
+    }
+
+    private static GameObject FindSceneObjectByNameIncludingInactive(string objectName)
+    {
+        if (string.IsNullOrWhiteSpace(objectName))
+            return null;
+
+        var all = Object.FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (var go in all)
+        {
+            if (go != null && go.name == objectName && go.scene.IsValid())
+                return go;
+        }
+
+        return null;
+    }
+
+    private static GameObject FindSceneObjectWithComponentIncludingInactive(System.Type componentType)
+    {
+        if (componentType == null)
+            return null;
+
+        var all = Object.FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (var go in all)
+        {
+            if (go == null || !go.scene.IsValid())
+                continue;
+            if (go.GetComponent(componentType) != null)
+                return go;
+        }
+
+        return null;
+    }
+
+    private static System.Type FindTypeInLoadedAssemblies(string fullTypeName)
+    {
+        if (string.IsNullOrWhiteSpace(fullTypeName))
+            return null;
+
+        var assemblies = System.AppDomain.CurrentDomain.GetAssemblies();
+        foreach (var assembly in assemblies)
+        {
+            var type = assembly.GetType(fullTypeName, false);
+            if (type != null)
+                return type;
+        }
+
+        return null;
     }
 
     private static bool TryGetWelcomeScreenPose(float distanceMeters, out Vector3 position, out Quaternion rotation)
@@ -432,6 +534,7 @@ public static class VRVideoPlayerSetup
         progressImage.fillClockwise = true;
         progressImage.fillAmount = 0f;
         progressImage.color = new Color(0.84f, 0.93f, 1f, 0.9f);
+        progressImage.raycastTarget = false;
 
         var switchObj = new GameObject("ModeSwitchButton", typeof(RectTransform), typeof(Image), typeof(Outline));
         switchObj.transform.SetParent(switchClusterObj.transform, false);

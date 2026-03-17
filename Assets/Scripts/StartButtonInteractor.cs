@@ -11,15 +11,9 @@ public class StartButtonInteractor : MonoBehaviour
 
     [Header("Button UI")]
     public RectTransform targetRect;
-    public Image targetImage;
     public Image progressImage;
     public Graphic iconToReplaceWhileProgress;
     public TMP_Text statusText;
-
-    [Header("Visuals")]
-    public Color normalColor = new Color(0.16f, 0.43f, 0.96f, 1f);
-    public Color hoverColor = new Color(0.08f, 0.23f, 0.58f, 1f);
-    public bool useHoverTint = false;
 
     [Header("Copy")]
     public string instructionText = "Click the start button";
@@ -28,18 +22,49 @@ public class StartButtonInteractor : MonoBehaviour
     [Header("Head-gaze dwell")]
     public float dwellSeconds = 1.0f;
 
+    [Header("Debug")]
+    public bool debugLogs = true;
+
     private float dwellTimer;
     private bool activatedThisHover;
     private int clickCount;
-    private ControlModeManager.ControlMode? lastMode;
+    private Button nativeButton;
+    private bool lastGazeHover;
+    private bool lastControllerHover;
+    private bool lastControllerRayAvailable;
 
     private void Awake()
     {
-        if (useHoverTint)
-            ApplyColor(normalColor);
+        if (targetRect != null)
+        {
+            nativeButton = targetRect.GetComponentInChildren<Button>(true);
+            if (nativeButton != null)
+                nativeButton.onClick.AddListener(HandleNativeButtonClick);
+        }
+
+        if (debugLogs)
+        {
+            if (nativeButton == null)
+            {
+                Debug.LogWarning("StartButtonInteractor: No native Unity Button found under targetRect. Native click events will not fire.");
+            }
+            else
+            {
+                Debug.Log(
+                    $"StartButtonInteractor: Bound native button '{nativeButton.gameObject.name}' " +
+                    $"(activeInHierarchy={nativeButton.gameObject.activeInHierarchy}, interactable={nativeButton.interactable}).");
+            }
+        }
+
         SetProgress(0f);
         if (statusText != null)
             statusText.text = instructionText;
+    }
+
+    private void OnDestroy()
+    {
+        if (nativeButton != null)
+            nativeButton.onClick.RemoveListener(HandleNativeButtonClick);
     }
 
     private void Update()
@@ -49,27 +74,38 @@ public class StartButtonInteractor : MonoBehaviour
 
         if (modeManager.IsControllerSwitchDialogOpen)
         {
-            if (useHoverTint)
-                ApplyColor(normalColor);
             ResetHoverState();
             return;
         }
 
-        if (lastMode == null || lastMode.Value != modeManager.CurrentMode)
+        bool gazeHasRay = modeManager.TryGetHeadGazeRay(out Ray gazeRay);
+        bool gazeHovering = gazeHasRay && IsRayPointingAtRect(gazeRay, targetRect);
+
+        bool controllerHasRay = modeManager.TryGetRightControllerRay(out Ray controllerRay);
+        bool controllerHovering = controllerHasRay && IsRayPointingAtRect(controllerRay, targetRect);
+
+        if (debugLogs)
         {
-            ResetHoverState();
-            lastMode = modeManager.CurrentMode;
+            if (controllerHasRay != lastControllerRayAvailable)
+            {
+                lastControllerRayAvailable = controllerHasRay;
+                Debug.Log($"StartButtonInteractor: Right controller ray available = {controllerHasRay}");
+            }
+
+            if (gazeHovering != lastGazeHover)
+            {
+                lastGazeHover = gazeHovering;
+                Debug.Log($"StartButtonInteractor: Gaze hover = {gazeHovering}");
+            }
+
+            if (controllerHovering != lastControllerHover)
+            {
+                lastControllerHover = controllerHovering;
+                Debug.Log($"StartButtonInteractor: Controller hover = {controllerHovering}");
+            }
         }
 
-        bool hasRay = modeManager.TryGetInteractionRay(out Ray ray);
-        bool hovering = hasRay && IsRayPointingAtRect(ray, targetRect);
-        if (useHoverTint)
-            ApplyColor(hovering ? hoverColor : normalColor);
-
-        if (modeManager.CurrentMode == ControlModeManager.ControlMode.HeadGaze)
-            HandleHeadGaze(hovering);
-        else
-            HandleController(hovering);
+        HandleHeadGaze(gazeHovering);
     }
 
     private void HandleHeadGaze(bool hovering)
@@ -99,18 +135,13 @@ public class StartButtonInteractor : MonoBehaviour
         }
     }
 
-    private void HandleController(bool hovering)
+    private void HandleNativeButtonClick()
     {
-        // Hide/reset radial fill in controller mode.
-        SetProgress(0f);
-        activatedThisHover = false;
-        dwellTimer = 0f;
+        if (debugLogs)
+            Debug.Log("StartButtonInteractor: Native Button.onClick fired.");
 
-        if (hovering && modeManager.ControllerSelectDownThisFrame)
-        {
-            clickCount++;
-            UpdateClickedText();
-        }
+        clickCount++;
+        UpdateClickedText();
     }
 
     private void UpdateClickedText()
@@ -124,12 +155,6 @@ public class StartButtonInteractor : MonoBehaviour
         dwellTimer = 0f;
         activatedThisHover = false;
         SetProgress(0f);
-    }
-
-    private void ApplyColor(Color color)
-    {
-        if (targetImage != null && targetImage.color != color)
-            targetImage.color = color;
     }
 
     private void SetProgress(float value)
