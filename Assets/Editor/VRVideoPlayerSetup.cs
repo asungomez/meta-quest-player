@@ -9,6 +9,9 @@ using UnityEngine.EventSystems;
 /// </summary>
 public static class VRVideoPlayerSetup
 {
+    private const string SecondaryButtonPrefabPath = "Assets/Prefabs/UI/UnityUIButtonBased/SecondaryButton_IconAndLabel_UnityUIButton.prefab";
+    private const string FilePickerButtonVariantPath = "Assets/Prefabs/UI/UnityUIButtonBased/FilePickerButton_UnityUIButton.prefab";
+
     [MenuItem("VR Video Player/Setup Scene")]
     public static void SetupScene()
     {
@@ -47,6 +50,9 @@ public static class VRVideoPlayerSetup
             out RectTransform buttonRect,
             out Image buttonImage,
             out TextMeshProUGUI subtitleText,
+            out RectTransform filePickerRect,
+            out Image filePickerProgressImage,
+            out Image filePickerIconImage,
             out Image progressImage,
             out Image startButtonIconImage,
             out GameObject startButtonTooltipRoot,
@@ -65,18 +71,25 @@ public static class VRVideoPlayerSetup
         modeManager.switchButtonImage = switchImage;
         modeManager.switchButtonIconImage = switchIconImage;
         modeManager.switchDwellProgressImage = switchDwellProgressImage;
-        var lockOnIcon = LoadSpriteFromAtlasByName("Assets/Images/OCUI_24_Filled_2x.png", "icon_lock_24_Filled");
-        if (lockOnIcon == null)
-            lockOnIcon = LoadSpriteByNameAcrossProject("icon_lock_24_Filled");
-        if (lockOnIcon == null)
-            lockOnIcon = LoadSpriteFromImagesFile("lock-on.png");
-        if (lockOnIcon == null)
+        var lockedIcon = LoadSpriteFromAtlasByName("Assets/Images/OCUI_24_Filled_2x.png", "icon_lock_24_Filled");
+        if (lockedIcon == null)
+            lockedIcon = LoadSpriteByNameAcrossProject("icon_lock_24_Filled");
+        if (lockedIcon == null)
+            lockedIcon = LoadSpriteFromImagesFile("lock-on.png");
+        if (lockedIcon == null)
         {
-            Debug.LogWarning("VRVideoPlayerSetup: Could not find UI Set sprite named 'lock-on'. Using generated fallback icon.");
-            lockOnIcon = CreateLockOnSprite(128, 128);
+            Debug.LogWarning("VRVideoPlayerSetup: Could not find lock icon sprite. Using generated fallback icon.");
+            lockedIcon = CreateLockOnSprite(128, 128);
         }
-        modeManager.controllerIconSprite = lockOnIcon;
-        modeManager.headGazeIconSprite = lockOnIcon;
+        var unlockedIcon = LoadSpriteFromAtlasByName("Assets/Images/OCUI_24_Filled_2x.png", "icon_lock-off_24_Filled");
+        if (unlockedIcon == null)
+            unlockedIcon = LoadSpriteByNameAcrossProject("icon_lock-off_24_Filled");
+        if (unlockedIcon == null)
+            unlockedIcon = LoadSpriteByNameAcrossProject("icon_lockoff_24_Filled");
+        if (unlockedIcon == null)
+            unlockedIcon = lockedIcon;
+        modeManager.lockedIconSprite = lockedIcon;
+        modeManager.unlockedIconSprite = unlockedIcon;
         modeManager.switchControllerOnly = true;
         modeManager.switchControllerOnlyTooltipRoot = switchTooltipRoot;
         modeManager.switchControllerOnlyTooltipText = switchTooltipText;
@@ -87,13 +100,25 @@ public static class VRVideoPlayerSetup
         startInteractor.targetRect = buttonRect;
         startInteractor.progressImage = progressImage;
         startInteractor.iconToReplaceWhileProgress = startButtonIconImage;
-        startInteractor.statusText = subtitleText;
         startInteractor.controllerOnlyTooltipRoot = startButtonTooltipRoot;
         startInteractor.controllerOnlyTooltipText = startButtonTooltipText;
         startInteractor.controllerOnlyTooltipOffset = new Vector2(0f, -8f);
         startInteractor.dwellSeconds = 1.0f;
         startInteractor.controllerOnly = true;
         startInteractor.controllerOnlyTooltip = "This button is only available with controllers.";
+
+        var filePickerInteractor = welcomeRoot.AddComponent<LibraryFilePickerInteractor>();
+        filePickerInteractor.modeManager = modeManager;
+        filePickerInteractor.targetRect = filePickerRect;
+        filePickerInteractor.progressImage = filePickerProgressImage;
+        filePickerInteractor.iconToReplaceWhileProgress = filePickerIconImage;
+        filePickerInteractor.statusText = subtitleText;
+        filePickerInteractor.dwellSeconds = 1.0f;
+        filePickerInteractor.controllerOnly = false;
+        filePickerInteractor.noSelectionStatus = "No videos in the library";
+        filePickerInteractor.pickingStatus = "Opening file picker...";
+        filePickerInteractor.pickedStatusFormat = "Selected: {0}";
+        filePickerInteractor.pickerUnavailableStatus = "Picker unavailable. See logcat.";
 
         EnsureNativeUiRayInteractionActive();
 
@@ -435,11 +460,91 @@ public static class VRVideoPlayerSetup
         return null;
     }
 
+    private static GameObject EnsureFilePickerButtonPrefabVariant()
+    {
+        var basePrefab = LoadRequiredPrefab(SecondaryButtonPrefabPath, "SecondaryButton_IconAndLabel_UnityUIButton");
+        var tempInstance = PrefabUtility.InstantiatePrefab(basePrefab) as GameObject;
+        if (tempInstance == null)
+            throw new System.InvalidOperationException("Failed to instantiate SecondaryButton_IconAndLabel_UnityUIButton while creating file picker variant.");
+
+        try
+        {
+            tempInstance.name = "FilePickerButton_UnityUIButton";
+
+            var rect = tempInstance.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                float widened = Mathf.Max(1f, rect.sizeDelta.x) * (4f / 3f);
+                rect.sizeDelta = new Vector2(widened, rect.sizeDelta.y);
+            }
+
+            var layout = tempInstance.GetComponent<LayoutElement>();
+            if (layout == null)
+                layout = tempInstance.AddComponent<LayoutElement>();
+            if (rect != null)
+                layout.preferredWidth = rect.sizeDelta.x;
+            layout.minWidth = 0f;
+            layout.flexibleWidth = 0f;
+
+            var label = tempInstance.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label != null)
+                label.text = "Choose video";
+
+            ApplyFilePickerButtonVisualLayout(tempInstance);
+
+            var saved = PrefabUtility.SaveAsPrefabAsset(tempInstance, FilePickerButtonVariantPath);
+            if (saved == null)
+            {
+                throw new System.InvalidOperationException(
+                    $"Failed to save file picker button prefab variant at '{FilePickerButtonVariantPath}'.");
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            return saved;
+        }
+        finally
+        {
+            Object.DestroyImmediate(tempInstance);
+        }
+    }
+
+    private static void ApplyFilePickerButtonVisualLayout(GameObject buttonObj)
+    {
+        if (buttonObj == null)
+            return;
+
+        // In this UI Set button, icon/text alignment is driven by the Elements row.
+        // Fallback to Background in case prefab internals differ across package versions.
+        HorizontalLayoutGroup layout = null;
+        var elementsTransform = buttonObj.transform.Find("Content/Background/Elements");
+        if (elementsTransform != null)
+            layout = elementsTransform.GetComponent<HorizontalLayoutGroup>();
+        if (layout == null)
+        {
+            var backgroundTransform = buttonObj.transform.Find("Content/Background");
+            if (backgroundTransform != null)
+                layout = backgroundTransform.GetComponent<HorizontalLayoutGroup>();
+        }
+        if (layout == null)
+            return;
+
+        layout.childAlignment = TextAnchor.MiddleLeft;
+        layout.spacing = 0f;
+
+        if (layout.padding == null)
+            layout.padding = new RectOffset();
+        layout.padding.left = 15;
+    }
+
     private static Transform BuildWelcomeCanvas(
         Transform parent,
         out RectTransform buttonRect,
         out Image buttonImage,
         out TextMeshProUGUI subtitleText,
+        out RectTransform filePickerRect,
+        out Image filePickerProgressImage,
+        out Image filePickerIconImage,
         out Image progressImage,
         out Image startButtonIconImage,
         out GameObject startButtonTooltipRoot,
@@ -454,6 +559,9 @@ public static class VRVideoPlayerSetup
         buttonRect = null;
         buttonImage = null;
         subtitleText = null;
+        filePickerRect = null;
+        filePickerProgressImage = null;
+        filePickerIconImage = null;
         progressImage = null;
         startButtonIconImage = null;
         startButtonTooltipRoot = null;
@@ -520,7 +628,7 @@ public static class VRVideoPlayerSetup
         titleLayoutElement.preferredWidth = 760f;
         titleLayoutElement.flexibleWidth = 1f;
         var titleText = titleObj.GetComponent<TextMeshProUGUI>();
-        titleText.text = "Hello world";
+        titleText.text = "Video library";
         titleText.fontSize = 110f;
         titleText.alignment = TextAlignmentOptions.MidlineLeft;
         titleText.textWrappingMode = TextWrappingModes.NoWrap;
@@ -554,11 +662,48 @@ public static class VRVideoPlayerSetup
         subtitleRt.sizeDelta = new Vector2(960f, 110f);
         subtitleObj.GetComponent<LayoutElement>().preferredWidth = 960f;
         subtitleText = subtitleObj.GetComponent<TextMeshProUGUI>();
-        subtitleText.text = "Click the start button";
+        subtitleText.text = "No videos in the library";
         subtitleText.fontSize = 62f;
         subtitleText.alignment = TextAlignmentOptions.Center;
         subtitleText.textWrappingMode = TextWrappingModes.NoWrap;
         subtitleText.color = new Color(0.90f, 0.95f, 1f, 0.95f);
+
+        GameObject filePickerButtonPrefab = EnsureFilePickerButtonPrefabVariant();
+        GameObject filePickerObj = PrefabUtility.InstantiatePrefab(filePickerButtonPrefab, bodyObj.transform) as GameObject;
+        if (filePickerObj == null)
+            throw new System.InvalidOperationException("Failed to instantiate FilePickerButton prefab variant.");
+        filePickerObj.name = "FilePickerButton";
+        filePickerRect = filePickerObj.GetComponent<RectTransform>();
+        ApplyFilePickerButtonVisualLayout(filePickerObj);
+
+        filePickerIconImage = FindRequiredUiSetIconImage(filePickerObj.transform);
+        if (filePickerIconImage == null)
+            throw new System.InvalidOperationException("File picker button requires an icon child tagged 'QDSUIIcon'.");
+
+        var folderIcon = LoadSpriteFromAtlasByName("Assets/Images/OCUI_24_Filled_2x.png", "icon_folder_24_Filled");
+        if (folderIcon == null)
+            folderIcon = LoadSpriteByNameAcrossProject("icon_folder_24_Filled");
+        if (folderIcon != null)
+            filePickerIconImage.sprite = folderIcon;
+
+        var filePickerProgressObj = new GameObject("DwellProgress", typeof(RectTransform), typeof(Image));
+        filePickerProgressObj.transform.SetParent(filePickerIconImage.transform, false);
+        var filePickerProgressRect = filePickerProgressObj.GetComponent<RectTransform>();
+        filePickerProgressRect.anchorMin = Vector2.zero;
+        filePickerProgressRect.anchorMax = Vector2.one;
+        filePickerProgressRect.pivot = new Vector2(0.5f, 0.5f);
+        filePickerProgressRect.anchoredPosition = Vector2.zero;
+        filePickerProgressRect.sizeDelta = Vector2.zero;
+
+        filePickerProgressImage = filePickerProgressObj.GetComponent<Image>();
+        filePickerProgressImage.sprite = CreateCircleSprite(192);
+        filePickerProgressImage.type = Image.Type.Filled;
+        filePickerProgressImage.fillMethod = Image.FillMethod.Radial360;
+        filePickerProgressImage.fillOrigin = (int)Image.Origin360.Top;
+        filePickerProgressImage.fillClockwise = true;
+        filePickerProgressImage.fillAmount = 0f;
+        filePickerProgressImage.color = new Color(0.84f, 0.93f, 1f, 0.9f);
+        filePickerProgressImage.raycastTarget = false;
 
         GameObject buttonObj = null;
         const string startButtonPrefabPath = "Assets/Prefabs/UI/UnityUIButtonBased/TextTileButton_IconAndLabel_Regular_UnityUIButton.prefab";

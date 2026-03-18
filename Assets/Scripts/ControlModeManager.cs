@@ -4,14 +4,14 @@ using UnityEngine.UI;
 using UnityEngine.XR;
 
 /// <summary>
-/// Manages active interaction mode (head gaze vs controller) and mode switch UI.
+/// Manages active lock mode state and switch UI.
 /// </summary>
 public class ControlModeManager : MonoBehaviour
 {
     public enum ControlMode
     {
-        HeadGaze,
-        Controller
+        Locked,
+        Unlocked
     }
 
     [Header("Mode Objects")]
@@ -22,8 +22,8 @@ public class ControlModeManager : MonoBehaviour
     public Image switchButtonImage;
     public Image switchButtonIconImage;
     public Image switchDwellProgressImage;
-    public Sprite controllerIconSprite;
-    public Sprite headGazeIconSprite;
+    public Sprite lockedIconSprite;
+    public Sprite unlockedIconSprite;
 
     [Header("Switch Behavior")]
     public float headDwellSeconds = 0.8f;
@@ -43,7 +43,8 @@ public class ControlModeManager : MonoBehaviour
     public float controllerPointerScale = 0.012f;
     public Color controllerPointerColor = new Color(0.95f, 0.98f, 1f, 1f);
 
-    public ControlMode CurrentMode { get; private set; } = ControlMode.HeadGaze;
+    public ControlMode CurrentMode { get; private set; } = ControlMode.Locked;
+    public bool IsLocked => CurrentMode == ControlMode.Locked;
     public bool ControllerSelectDownThisFrame { get; private set; }
     public bool RightIndexTriggerDownThisFrame { get; private set; }
     public bool IsControllerSwitchDialogOpen { get; private set; }
@@ -53,7 +54,6 @@ public class ControlModeManager : MonoBehaviour
     private bool previousRightIndexTrigger;
     private Camera gazeCamera;
     private Transform controllerPointerVisual;
-    private bool hasWarnedNoControllerRay;
     private Button switchNativeButton;
 
     private void Awake()
@@ -112,27 +112,17 @@ public class ControlModeManager : MonoBehaviour
         bool hasControllerRayForVisual = TryGetRightControllerRay(out Ray controllerRayForVisual);
         UpdateControllerPointerVisual(hasControllerRayForVisual, controllerRayForVisual);
 
-        if (!hasRay && !hasWarnedNoControllerRay)
-        {
-            hasWarnedNoControllerRay = true;
-            Debug.LogWarning("ControlModeManager: Controller mode active but no controller pose found. Check headset hand/controller tracking settings.");
-        }
-        else if (hasRay)
-        {
-            hasWarnedNoControllerRay = false;
-        }
-
         if (switchControllerOnly)
             return;
 
-        if (CurrentMode == ControlMode.HeadGaze)
+        if (CurrentMode == ControlMode.Locked)
         {
             if (hovering)
             {
                 switchDwellTimer += Time.deltaTime;
                 if (switchDwellTimer >= headDwellSeconds)
                 {
-                    ApplyMode(ControlMode.Controller);
+                    ApplyMode(ControlMode.Unlocked);
                     switchDwellTimer = 0f;
                 }
             }
@@ -145,25 +135,19 @@ public class ControlModeManager : MonoBehaviour
         }
 
         if (hovering && ControllerSelectDownThisFrame)
-            ApplyMode(ControlMode.HeadGaze);
+            ApplyMode(ControlMode.Locked);
     }
 
     public bool TryGetInteractionRay(out Ray ray)
     {
-        if (CurrentMode == ControlMode.HeadGaze)
+        var cam = ResolveGazeCamera();
+        if (cam != null)
         {
-            var cam = ResolveGazeCamera();
-            if (cam != null)
-            {
-                ray = new Ray(cam.transform.position, cam.transform.forward);
-                return true;
-            }
+            ray = new Ray(cam.transform.position, cam.transform.forward);
+            return true;
         }
-        else
-        {
-            if (TryGetControllerRay(out ray))
-                return true;
-        }
+        if (TryGetControllerRay(out ray))
+            return true;
 
         ray = default;
         return false;
@@ -191,16 +175,15 @@ public class ControlModeManager : MonoBehaviour
     {
         CurrentMode = mode;
         switchDwellTimer = 0f;
-        hasWarnedNoControllerRay = false;
 
         if (headGazePointer != null)
-            headGazePointer.enabled = mode == ControlMode.HeadGaze;
+            headGazePointer.enabled = true;
 
         if (switchButtonIconImage != null)
         {
             switchButtonIconImage.enabled = true;
-            if (controllerIconSprite != null && headGazeIconSprite != null)
-                switchButtonIconImage.sprite = mode == ControlMode.HeadGaze ? controllerIconSprite : headGazeIconSprite;
+            if (lockedIconSprite != null && unlockedIconSprite != null)
+                switchButtonIconImage.sprite = mode == ControlMode.Locked ? lockedIconSprite : unlockedIconSprite;
             switchButtonIconImage.preserveAspect = true;
         }
 
@@ -208,7 +191,7 @@ public class ControlModeManager : MonoBehaviour
         {
             switchDwellProgressImage.color = switchProgressColor;
             switchDwellProgressImage.fillAmount = 0f;
-            switchDwellProgressImage.gameObject.SetActive(mode == ControlMode.HeadGaze && !switchControllerOnly);
+            switchDwellProgressImage.gameObject.SetActive(mode == ControlMode.Locked && !switchControllerOnly);
         }
     }
 
@@ -217,7 +200,7 @@ public class ControlModeManager : MonoBehaviour
         if (switchDwellProgressImage == null)
             return;
 
-        bool show = CurrentMode == ControlMode.HeadGaze && !switchControllerOnly;
+        bool show = CurrentMode == ControlMode.Locked && !switchControllerOnly;
         if (switchDwellProgressImage.gameObject.activeSelf != show)
             switchDwellProgressImage.gameObject.SetActive(show);
         if (!show)
@@ -235,13 +218,7 @@ public class ControlModeManager : MonoBehaviour
 
     private void HandleSwitchNativeButtonClick()
     {
-        if (switchControllerOnly && CurrentMode == ControlMode.HeadGaze)
-        {
-            ApplyMode(ControlMode.Controller);
-            return;
-        }
-
-        ApplyMode(CurrentMode == ControlMode.HeadGaze ? ControlMode.Controller : ControlMode.HeadGaze);
+        ApplyMode(CurrentMode == ControlMode.Locked ? ControlMode.Unlocked : ControlMode.Locked);
     }
 
     private void SetSwitchControllerOnlyTooltipVisible(bool visible)

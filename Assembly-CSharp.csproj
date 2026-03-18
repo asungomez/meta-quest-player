@@ -52,7 +52,9 @@
     <Compile Include="Assets/Scripts/HeadGazeButtonHover.cs" />
     <Compile Include="Assets/Scripts/TooltipPositioner.cs" />
     <Compile Include="Assets/Scripts/HeadGazePointer.cs" />
+    <Compile Include="Assets/Scripts/NativeFilePickerBridge.cs" />
     <Compile Include="Assets/Scripts/VRVideoPlayerController.cs" />
+    <Compile Include="Assets/Scripts/LibraryFilePickerInteractor.cs" />
     <Compile Include="Assets/Scripts/GazePlayButton.cs" />
     <Compile Include="Assets/Scripts/ControlModeManager.cs" />
     <Compile Include="Assets/TutorialInfo/Scripts/Readme.cs" />
@@ -77,6 +79,7 @@
     <None Include="Assets/TextMesh Pro/Shaders/TMPro_Properties.cginc" />
     <None Include="Assets/TextMesh Pro/Shaders/TMPro_Surface.cginc" />
     <None Include="Assets/TextMesh Pro/Resources/LineBreaking Following Characters.txt" />
+    <None Include="Assets/link.xml" />
     <None Include="Assets/TextMesh Pro/Shaders/TMP_SDF-Mobile Masking.shader" />
     <None Include="Assets/TextMesh Pro/Shaders/TMP_SDF Overlay.shader" />
     <None Include="Assets/TextMesh Pro/Shaders/TMP_Bitmap-Mobile.shader" />
@@ -1293,6 +1296,10 @@
       <HintPath>Library/ScriptAssemblies/Unity.AI.Navigation.Editor.ConversionSystem.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="NativeFilePicker.Editor">
+      <HintPath>Library/ScriptAssemblies/NativeFilePicker.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="Meta.XR.ImmersiveDebugger">
       <HintPath>Library/ScriptAssemblies/Meta.XR.ImmersiveDebugger.dll</HintPath>
       <Private>False</Private>
@@ -1483,6 +1490,10 @@
     </Reference>
     <Reference Include="Unity.XR.Management">
       <HintPath>Library/ScriptAssemblies/Unity.XR.Management.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="NativeFilePicker.Runtime">
+      <HintPath>Library/ScriptAssemblies/NativeFilePicker.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Meta.Wit.Dictation.Editor">

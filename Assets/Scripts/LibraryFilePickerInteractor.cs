@@ -1,18 +1,29 @@
+using System.IO;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.UI;
 
 /// <summary>
-/// Handles Start button hover/click behavior for both head-gaze and controller modes.
+/// File picker button with the same interaction standard as other buttons:
+/// - gaze dwell with radial progress
+/// - controller click via native Button.onClick
+/// - optional controller-only tooltip behavior
 /// </summary>
-public class StartButtonInteractor : MonoBehaviour
+public class LibraryFilePickerInteractor : MonoBehaviour
 {
+    private const string LogTag = "FilePickerDebug";
+
+    [System.Serializable]
+    public class FilePickedEvent : UnityEvent<string> { }
+
     public ControlModeManager modeManager;
 
     [Header("Button UI")]
     public RectTransform targetRect;
     public Image progressImage;
     public Graphic iconToReplaceWhileProgress;
+    public TMP_Text statusText;
     public GameObject controllerOnlyTooltipRoot;
     public TMP_Text controllerOnlyTooltipText;
     public Vector2 controllerOnlyTooltipOffset = new Vector2(0f, -8f);
@@ -22,8 +33,18 @@ public class StartButtonInteractor : MonoBehaviour
     public bool controllerOnly = false;
     public string controllerOnlyTooltip = "This button is only available with controllers.";
 
+    [Header("Copy")]
+    public string pickingStatus = "Opening file picker...";
+    public string noSelectionStatus = "No videos in the library";
+    public string pickedStatusFormat = "Selected: {0}";
+    public string pickerUnavailableStatus = "Install NativeFilePicker plugin to select videos.";
+
+    [Header("Events")]
+    public FilePickedEvent onFilePicked;
+
     private float dwellTimer;
     private bool activatedThisHover;
+    private bool isPicking;
     private Button nativeButton;
     private RectTransform controllerOnlyTooltipRect;
 
@@ -67,7 +88,6 @@ public class StartButtonInteractor : MonoBehaviour
 
         if (controllerOnly)
         {
-            // In controller-only mode, gaze only shows tooltip and never triggers dwell/click.
             SetControllerOnlyTooltipVisible(gazeHovering);
             if (gazeHovering)
                 ResetHoverState();
@@ -96,6 +116,7 @@ public class StartButtonInteractor : MonoBehaviour
             if (progress >= 1f)
             {
                 activatedThisHover = true;
+                TriggerPick();
             }
         }
         else
@@ -106,6 +127,44 @@ public class StartButtonInteractor : MonoBehaviour
 
     private void HandleNativeButtonClick()
     {
+        TriggerPick();
+    }
+
+    private void TriggerPick()
+    {
+        if (isPicking)
+        {
+            Debug.Log($"{LogTag}: TriggerPick ignored because a pick is already in progress.");
+            return;
+        }
+
+        isPicking = true;
+        Debug.Log($"{LogTag}: TriggerPick started. controllerOnly={controllerOnly}, dwellSeconds={dwellSeconds:0.00}");
+        if (statusText != null && !string.IsNullOrWhiteSpace(pickingStatus))
+            statusText.text = pickingStatus;
+
+        NativeFilePickerBridge.PickVideoFile(path =>
+        {
+            isPicking = false;
+            Debug.Log($"{LogTag}: Pick callback received. path='{path ?? "<null>"}'");
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                if (statusText != null && !string.IsNullOrWhiteSpace(noSelectionStatus))
+                    statusText.text = noSelectionStatus;
+                return;
+            }
+
+            if (statusText != null)
+                statusText.text = string.Format(pickedStatusFormat, Path.GetFileName(path));
+            onFilePicked?.Invoke(path);
+        },
+        () =>
+        {
+            isPicking = false;
+            Debug.LogError($"{LogTag}: Picker unavailable callback fired.");
+            if (statusText != null && !string.IsNullOrWhiteSpace(pickerUnavailableStatus))
+                statusText.text = pickerUnavailableStatus;
+        });
     }
 
     private void ResetHoverState()

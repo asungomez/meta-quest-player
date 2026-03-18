@@ -1348,6 +1348,10 @@
       <HintPath>Library/ScriptAssemblies/Unity.AI.Navigation.Editor.ConversionSystem.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="NativeFilePicker.Editor">
+      <HintPath>Library/ScriptAssemblies/NativeFilePicker.Editor.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="Meta.XR.ImmersiveDebugger">
       <HintPath>Library/ScriptAssemblies/Meta.XR.ImmersiveDebugger.dll</HintPath>
       <Private>False</Private>
@@ -1538,6 +1542,10 @@
     </Reference>
     <Reference Include="Unity.XR.Management">
       <HintPath>Library/ScriptAssemblies/Unity.XR.Management.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="NativeFilePicker.Runtime">
+      <HintPath>Library/ScriptAssemblies/NativeFilePicker.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Meta.Wit.Dictation.Editor">
