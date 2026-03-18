@@ -16,6 +16,7 @@ public class StartButtonInteractor : MonoBehaviour
     public TMP_Text statusText;
     public GameObject controllerOnlyTooltipRoot;
     public TMP_Text controllerOnlyTooltipText;
+    public Vector2 controllerOnlyTooltipOffset = new Vector2(0f, -8f);
 
     [Header("Copy")]
     public string instructionText = "Click the start button";
@@ -30,6 +31,7 @@ public class StartButtonInteractor : MonoBehaviour
     private bool activatedThisHover;
     private int clickCount;
     private Button nativeButton;
+    private RectTransform controllerOnlyTooltipRect;
 
     private void Awake()
     {
@@ -42,6 +44,8 @@ public class StartButtonInteractor : MonoBehaviour
 
         SetProgress(0f);
         SetControllerOnlyTooltipVisible(false);
+        controllerOnlyTooltipRect = controllerOnlyTooltipRoot != null ? controllerOnlyTooltipRoot.GetComponent<RectTransform>() : null;
+        ApplyControllerOnlyTooltipOffset();
         if (controllerOnlyTooltipText != null)
             controllerOnlyTooltipText.text = controllerOnlyTooltip;
         RefreshStatusText();
@@ -153,6 +157,13 @@ public class StartButtonInteractor : MonoBehaviour
             return;
         if (controllerOnlyTooltipRoot.activeSelf != visible)
             controllerOnlyTooltipRoot.SetActive(visible);
+    }
+
+    private void ApplyControllerOnlyTooltipOffset()
+    {
+        if (controllerOnlyTooltipRect == null)
+            return;
+        controllerOnlyTooltipRect.anchoredPosition = controllerOnlyTooltipOffset;
     }
 
     private static bool IsRayPointingAtRect(Ray ray, RectTransform rect)

@@ -31,19 +31,11 @@ public class ControlModeManager : MonoBehaviour
     public Color hoverColor = new Color(0.80f, 0.89f, 1f, 0.98f);
     public Color switchProgressColor = new Color(0.80f, 0.90f, 1f, 0.95f);
 
-    [Header("Controller Switch Dialog")]
-    public GameObject switchDialogRoot;
-    public RectTransform switchDialogCancelRect;
-    public Image switchDialogCancelImage;
-    public Image switchDialogCancelProgressImage;
-    public RectTransform switchDialogConfirmRect;
-    public Image switchDialogConfirmImage;
-    public Image switchDialogConfirmProgressImage;
-    public Color switchDialogCancelNormal = new Color(0.18f, 0.45f, 0.94f, 1f);
-    public Color switchDialogCancelHover = new Color(0.10f, 0.30f, 0.72f, 1f);
-    public Color switchDialogConfirmNormal = new Color(0.10f, 0.14f, 0.20f, 1f);
-    public Color switchDialogConfirmHover = new Color(0.06f, 0.10f, 0.16f, 1f);
-    public Color switchDialogProgressColor = new Color(0.86f, 0.93f, 1f, 0.95f);
+    [Header("Switch Controller-Only")]
+    public bool switchControllerOnly = true;
+    public GameObject switchControllerOnlyTooltipRoot;
+    public TMP_Text switchControllerOnlyTooltipText;
+    public string switchControllerOnlyTooltip = "This button is only available with controllers.";
 
     [Header("Controller Pointer Visual")]
     public bool showControllerPointer = true;
@@ -57,26 +49,34 @@ public class ControlModeManager : MonoBehaviour
     public bool IsControllerSwitchDialogOpen { get; private set; }
 
     private float switchDwellTimer;
-    private float dialogDwellTimer;
     private bool previousControllerSelect;
     private bool previousRightIndexTrigger;
     private Camera gazeCamera;
     private Transform controllerPointerVisual;
     private bool hasWarnedNoControllerRay;
-    private SwitchDialogChoice dialogChoice = SwitchDialogChoice.None;
-
-    private enum SwitchDialogChoice
-    {
-        None,
-        Cancel,
-        Confirm
-    }
+    private Button switchNativeButton;
 
     private void Awake()
     {
+        if (switchButtonRect != null)
+        {
+            switchNativeButton = switchButtonRect.GetComponentInChildren<Button>(true);
+            if (switchNativeButton != null)
+                switchNativeButton.onClick.AddListener(HandleSwitchNativeButtonClick);
+        }
+
         EnsureControllerPointerVisual();
         ApplyMode(CurrentMode);
-        SetDialogOpen(false);
+
+        if (switchControllerOnlyTooltipText != null)
+            switchControllerOnlyTooltipText.text = switchControllerOnlyTooltip;
+        SetSwitchControllerOnlyTooltipVisible(false);
+    }
+
+    private void OnDestroy()
+    {
+        if (switchNativeButton != null)
+            switchNativeButton.onClick.RemoveListener(HandleSwitchNativeButtonClick);
     }
 
     private void Update()
@@ -92,40 +92,25 @@ public class ControlModeManager : MonoBehaviour
         RightIndexTriggerDownThisFrame = rightIndexTriggerPressed && !previousRightIndexTrigger;
         previousRightIndexTrigger = rightIndexTriggerPressed;
 
+        bool gazeHasRay = TryGetHeadGazeRay(out Ray gazeRay);
+        bool gazeHovering = gazeHasRay && switchButtonRect != null && IsRayPointingAtRect(gazeRay, switchButtonRect);
+
         bool hasRay = TryGetInteractionRay(out Ray ray);
         bool hovering = hasRay && switchButtonRect != null && IsRayPointingAtRect(ray, switchButtonRect);
-        if (switchButtonImage != null)
-            switchButtonImage.color = hovering ? hoverColor : normalColor;
+        UpdateSwitchDwellProgressVisual(hovering && !switchControllerOnly);
 
-        UpdateSwitchDwellProgressVisual(hovering);
+        if (switchControllerOnly)
+        {
+            SetSwitchControllerOnlyTooltipVisible(gazeHovering);
+            switchDwellTimer = 0f;
+        }
+        else
+        {
+            SetSwitchControllerOnlyTooltipVisible(false);
+        }
+
         bool hasControllerRayForVisual = TryGetRightControllerRay(out Ray controllerRayForVisual);
         UpdateControllerPointerVisual(hasControllerRayForVisual, controllerRayForVisual);
-
-        if (IsControllerSwitchDialogOpen)
-        {
-            HandleSwitchDialogInteraction(hasRay, ray);
-            previousControllerSelect = false;
-            return;
-        }
-
-        if (CurrentMode == ControlMode.HeadGaze)
-        {
-            if (hovering)
-            {
-                switchDwellTimer += Time.deltaTime;
-                if (switchDwellTimer >= headDwellSeconds)
-                {
-                    SetDialogOpen(true);
-                    switchDwellTimer = 0f;
-                }
-            }
-            else
-            {
-                switchDwellTimer = 0f;
-            }
-
-            return;
-        }
 
         if (!hasRay && !hasWarnedNoControllerRay)
         {
@@ -135,6 +120,28 @@ public class ControlModeManager : MonoBehaviour
         else if (hasRay)
         {
             hasWarnedNoControllerRay = false;
+        }
+
+        if (switchControllerOnly)
+            return;
+
+        if (CurrentMode == ControlMode.HeadGaze)
+        {
+            if (hovering)
+            {
+                switchDwellTimer += Time.deltaTime;
+                if (switchDwellTimer >= headDwellSeconds)
+                {
+                    ApplyMode(ControlMode.Controller);
+                    switchDwellTimer = 0f;
+                }
+            }
+            else
+            {
+                switchDwellTimer = 0f;
+            }
+
+            return;
         }
 
         if (hovering && ControllerSelectDownThisFrame)
@@ -192,7 +199,8 @@ public class ControlModeManager : MonoBehaviour
         if (switchButtonIconImage != null)
         {
             switchButtonIconImage.enabled = true;
-            switchButtonIconImage.sprite = mode == ControlMode.HeadGaze ? controllerIconSprite : headGazeIconSprite;
+            if (controllerIconSprite != null && headGazeIconSprite != null)
+                switchButtonIconImage.sprite = mode == ControlMode.HeadGaze ? controllerIconSprite : headGazeIconSprite;
             switchButtonIconImage.preserveAspect = true;
         }
 
@@ -200,7 +208,7 @@ public class ControlModeManager : MonoBehaviour
         {
             switchDwellProgressImage.color = switchProgressColor;
             switchDwellProgressImage.fillAmount = 0f;
-            switchDwellProgressImage.gameObject.SetActive(mode == ControlMode.HeadGaze && !IsControllerSwitchDialogOpen);
+            switchDwellProgressImage.gameObject.SetActive(mode == ControlMode.HeadGaze && !switchControllerOnly);
         }
     }
 
@@ -209,7 +217,7 @@ public class ControlModeManager : MonoBehaviour
         if (switchDwellProgressImage == null)
             return;
 
-        bool show = CurrentMode == ControlMode.HeadGaze && !IsControllerSwitchDialogOpen;
+        bool show = CurrentMode == ControlMode.HeadGaze && !switchControllerOnly;
         if (switchDwellProgressImage.gameObject.activeSelf != show)
             switchDwellProgressImage.gameObject.SetActive(show);
         if (!show)
@@ -225,96 +233,23 @@ public class ControlModeManager : MonoBehaviour
         switchDwellProgressImage.fillAmount = normalized;
     }
 
-    private void HandleSwitchDialogInteraction(bool hasRay, Ray ray)
+    private void HandleSwitchNativeButtonClick()
     {
-        if (CurrentMode != ControlMode.HeadGaze)
+        if (switchControllerOnly && CurrentMode == ControlMode.HeadGaze)
         {
-            SetDialogOpen(false);
-            return;
-        }
-
-        bool hoverCancel = hasRay && switchDialogCancelRect != null && IsRayPointingAtRect(ray, switchDialogCancelRect);
-        bool hoverConfirm = hasRay && switchDialogConfirmRect != null && IsRayPointingAtRect(ray, switchDialogConfirmRect);
-
-        if (switchDialogCancelImage != null)
-            switchDialogCancelImage.color = hoverCancel ? switchDialogCancelHover : switchDialogCancelNormal;
-        if (switchDialogConfirmImage != null)
-            switchDialogConfirmImage.color = hoverConfirm ? switchDialogConfirmHover : switchDialogConfirmNormal;
-        if (switchDialogCancelProgressImage != null)
-            switchDialogCancelProgressImage.fillAmount = 0f;
-        if (switchDialogConfirmProgressImage != null)
-            switchDialogConfirmProgressImage.fillAmount = 0f;
-
-        SwitchDialogChoice currentChoice = hoverCancel ? SwitchDialogChoice.Cancel :
-                                          hoverConfirm ? SwitchDialogChoice.Confirm :
-                                          SwitchDialogChoice.None;
-
-        if (currentChoice == SwitchDialogChoice.None)
-        {
-            dialogChoice = SwitchDialogChoice.None;
-            dialogDwellTimer = 0f;
-            return;
-        }
-
-        if (dialogChoice != currentChoice)
-        {
-            dialogChoice = currentChoice;
-            dialogDwellTimer = 0f;
-        }
-
-        dialogDwellTimer += Time.deltaTime;
-        float normalized = headDwellSeconds > 0f ? Mathf.Clamp01(dialogDwellTimer / headDwellSeconds) : 1f;
-        if (dialogChoice == SwitchDialogChoice.Cancel && switchDialogCancelProgressImage != null)
-            switchDialogCancelProgressImage.fillAmount = normalized;
-        if (dialogChoice == SwitchDialogChoice.Confirm && switchDialogConfirmProgressImage != null)
-            switchDialogConfirmProgressImage.fillAmount = normalized;
-
-        if (normalized < 1f)
-            return;
-
-        dialogDwellTimer = 0f;
-        if (dialogChoice == SwitchDialogChoice.Cancel)
-        {
-            SetDialogOpen(false);
-            return;
-        }
-
-        if (dialogChoice == SwitchDialogChoice.Confirm)
-        {
-            SetDialogOpen(false);
             ApplyMode(ControlMode.Controller);
+            return;
         }
+
+        ApplyMode(CurrentMode == ControlMode.HeadGaze ? ControlMode.Controller : ControlMode.HeadGaze);
     }
 
-    private void SetDialogOpen(bool isOpen)
+    private void SetSwitchControllerOnlyTooltipVisible(bool visible)
     {
-        IsControllerSwitchDialogOpen = isOpen;
-        dialogDwellTimer = 0f;
-        dialogChoice = SwitchDialogChoice.None;
-
-        if (switchDialogRoot != null)
-            switchDialogRoot.SetActive(isOpen);
-
-        if (switchDialogCancelImage != null)
-            switchDialogCancelImage.color = switchDialogCancelNormal;
-        if (switchDialogConfirmImage != null)
-            switchDialogConfirmImage.color = switchDialogConfirmNormal;
-        if (switchDialogCancelProgressImage != null)
-        {
-            switchDialogCancelProgressImage.color = switchDialogProgressColor;
-            switchDialogCancelProgressImage.fillAmount = 0f;
-        }
-        if (switchDialogConfirmProgressImage != null)
-        {
-            switchDialogConfirmProgressImage.color = switchDialogProgressColor;
-            switchDialogConfirmProgressImage.fillAmount = 0f;
-        }
-
-        if (switchDwellProgressImage != null)
-        {
-            switchDwellProgressImage.fillAmount = 0f;
-            switchDwellProgressImage.gameObject.SetActive(CurrentMode == ControlMode.HeadGaze && !isOpen);
-        }
+        if (switchControllerOnlyTooltipRoot == null)
+            return;
+        if (switchControllerOnlyTooltipRoot.activeSelf != visible)
+            switchControllerOnlyTooltipRoot.SetActive(visible);
     }
 
     private void EnsureControllerPointerVisual()

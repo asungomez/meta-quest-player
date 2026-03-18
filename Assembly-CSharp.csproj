@@ -50,6 +50,7 @@
   <ItemGroup>
     <Compile Include="Assets/Scripts/StartButtonInteractor.cs" />
     <Compile Include="Assets/Scripts/HeadGazeButtonHover.cs" />
+    <Compile Include="Assets/Scripts/TooltipPositioner.cs" />
     <Compile Include="Assets/Scripts/HeadGazePointer.cs" />
     <Compile Include="Assets/Scripts/VRVideoPlayerController.cs" />
     <Compile Include="Assets/Scripts/GazePlayButton.cs" />

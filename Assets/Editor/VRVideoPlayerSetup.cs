@@ -55,13 +55,8 @@ public static class VRVideoPlayerSetup
             out Image switchImage,
             out Image switchIconImage,
             out Image switchDwellProgressImage,
-            out GameObject switchDialogRoot,
-            out RectTransform switchDialogCancelRect,
-            out Image switchDialogCancelImage,
-            out Image switchDialogCancelProgressImage,
-            out RectTransform switchDialogConfirmRect,
-            out Image switchDialogConfirmImage,
-            out Image switchDialogConfirmProgressImage);
+            out GameObject switchTooltipRoot,
+            out TextMeshProUGUI switchTooltipText);
 
         var modeManager = welcomeRoot.AddComponent<ControlModeManager>();
         modeManager.headGazePointer = headPointer;
@@ -70,15 +65,13 @@ public static class VRVideoPlayerSetup
         modeManager.switchButtonImage = switchImage;
         modeManager.switchButtonIconImage = switchIconImage;
         modeManager.switchDwellProgressImage = switchDwellProgressImage;
-        modeManager.switchDialogRoot = switchDialogRoot;
-        modeManager.switchDialogCancelRect = switchDialogCancelRect;
-        modeManager.switchDialogCancelImage = switchDialogCancelImage;
-        modeManager.switchDialogCancelProgressImage = switchDialogCancelProgressImage;
-        modeManager.switchDialogConfirmRect = switchDialogConfirmRect;
-        modeManager.switchDialogConfirmImage = switchDialogConfirmImage;
-        modeManager.switchDialogConfirmProgressImage = switchDialogConfirmProgressImage;
-        modeManager.controllerIconSprite = LoadSpriteFromImagesFile("vr-controller.png");
-        modeManager.headGazeIconSprite = LoadSpriteFromImagesFile("head-gaze.png");
+        var lockOnIcon = LoadSpriteFromImagesFile("lock-on.png");
+        modeManager.controllerIconSprite = lockOnIcon;
+        modeManager.headGazeIconSprite = lockOnIcon;
+        modeManager.switchControllerOnly = true;
+        modeManager.switchControllerOnlyTooltipRoot = switchTooltipRoot;
+        modeManager.switchControllerOnlyTooltipText = switchTooltipText;
+        modeManager.switchControllerOnlyTooltip = "This button is only available with controllers.";
 
         var startInteractor = welcomeRoot.AddComponent<StartButtonInteractor>();
         startInteractor.modeManager = modeManager;
@@ -88,6 +81,7 @@ public static class VRVideoPlayerSetup
         startInteractor.statusText = subtitleText;
         startInteractor.controllerOnlyTooltipRoot = startButtonTooltipRoot;
         startInteractor.controllerOnlyTooltipText = startButtonTooltipText;
+        startInteractor.controllerOnlyTooltipOffset = new Vector2(0f, -8f);
         startInteractor.dwellSeconds = 1.0f;
         startInteractor.controllerOnly = true;
         startInteractor.controllerOnlyTooltip = "This button is only available with controllers.";
@@ -379,13 +373,8 @@ public static class VRVideoPlayerSetup
         out Image switchImage,
         out Image switchIconImage,
         out Image switchDwellProgressImage,
-        out GameObject switchDialogRoot,
-        out RectTransform switchDialogCancelRect,
-        out Image switchDialogCancelImage,
-        out Image switchDialogCancelProgressImage,
-        out RectTransform switchDialogConfirmRect,
-        out Image switchDialogConfirmImage,
-        out Image switchDialogConfirmProgressImage)
+        out GameObject switchTooltipRoot,
+        out TextMeshProUGUI switchTooltipText)
     {
         buttonRect = null;
         buttonImage = null;
@@ -398,15 +387,8 @@ public static class VRVideoPlayerSetup
         switchImage = null;
         switchIconImage = null;
         switchDwellProgressImage = null;
-        switchDialogRoot = null;
-        switchDialogCancelRect = null;
-        switchDialogCancelImage = null;
-        switchDialogCancelProgressImage = null;
-        switchDialogConfirmRect = null;
-        switchDialogConfirmImage = null;
-        switchDialogConfirmProgressImage = null;
-
-        var rounded = CreateRoundedSprite(512, 512, 24);
+        switchTooltipRoot = null;
+        switchTooltipText = null;
         GameObject canvasObj;
         GameObject panelObj;
         RectTransform panelRt;
@@ -548,17 +530,22 @@ public static class VRVideoPlayerSetup
             AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/tooltip.prefab");
         if (tooltipPrefab != null)
         {
-            startButtonTooltipRoot = PrefabUtility.InstantiatePrefab(tooltipPrefab, buttonObj.transform) as GameObject;
+            startButtonTooltipRoot = PrefabUtility.InstantiatePrefab(tooltipPrefab, contentHostObj.transform) as GameObject;
             if (startButtonTooltipRoot != null)
             {
                 startButtonTooltipRoot.name = "ControllerOnlyTooltip";
                 var tooltipRt = startButtonTooltipRoot.GetComponent<RectTransform>();
                 if (tooltipRt != null)
                 {
-                    tooltipRt.anchorMin = new Vector2(0.5f, 1f);
-                    tooltipRt.anchorMax = new Vector2(0.5f, 1f);
-                    tooltipRt.pivot = new Vector2(0.5f, 0f);
-                    tooltipRt.anchoredPosition = new Vector2(0f, 4f);
+                    var pos = startButtonTooltipRoot.AddComponent<TooltipPositioner>();
+                    pos.tooltipRect = tooltipRt;
+                    pos.anchorRect = buttonRect;
+                    pos.boundsRect = contentHostRt;
+                    pos.positioningRoot = contentHostRt;
+                    pos.preferredPlacement = TooltipPositioner.Placement.Top;
+                    pos.gap = 4f;
+                    pos.offset = new Vector2(0f, -8f);
+                    pos.keepWithinBounds = true;
                 }
 
                 startButtonTooltipText = startButtonTooltipRoot.GetComponentInChildren<TextMeshProUGUI>(true);
@@ -569,43 +556,38 @@ public static class VRVideoPlayerSetup
             }
         }
 
-        var switchObj = new GameObject("ModeSwitchButton", typeof(RectTransform), typeof(Image), typeof(Outline));
+        const string switchButtonPrefabPath = "Assets/Prefabs/UI/UnityUIButtonBased/BorderlessButton_IconAndLabel_UnityUIButton.prefab";
+        GameObject switchButtonPrefab = LoadRequiredPrefab(switchButtonPrefabPath, "BorderlessButton_IconAndLabel_UnityUIButton");
+        var switchObj = PrefabUtility.InstantiatePrefab(switchButtonPrefab, switchClusterObj.transform) as GameObject;
+        if (switchObj == null)
+            throw new System.InvalidOperationException("Failed to instantiate BorderlessButton_IconAndLabel_UnityUIButton.");
+        switchObj.name = "ModeSwitchButton";
         switchObj.transform.SetParent(switchClusterObj.transform, false);
         switchRect = switchObj.GetComponent<RectTransform>();
-        switchRect.sizeDelta = new Vector2(100f, 100f);
+        if (switchRect != null)
+            switchRect.sizeDelta = new Vector2(100f, 100f);
 
-        switchImage = switchObj.GetComponent<Image>();
-        switchImage.sprite = rounded;
-        switchImage.type = Image.Type.Sliced;
-        switchImage.color = new Color(0.92f, 0.96f, 1f, 0.96f);
+        switchImage = switchObj.GetComponentInChildren<Image>(true);
+        switchIconImage = FindRequiredUiSetIconImage(switchObj.transform);
+        if (switchIconImage == null)
+        {
+            throw new System.InvalidOperationException(
+                "Required UI Set icon with tag 'QDSUIIcon' was not found on switch button prefab.");
+        }
 
-        var switchOutline = switchObj.GetComponent<Outline>();
-        switchOutline.effectColor = new Color(0.24f, 0.38f, 0.60f, 0.30f);
-        switchOutline.effectDistance = new Vector2(2f, -2f);
-        switchOutline.useGraphicAlpha = true;
-
-        var switchIconImageObj = new GameObject("IconImage", typeof(RectTransform), typeof(Image));
-        switchIconImageObj.transform.SetParent(switchObj.transform, false);
-        var switchIconImageRect = switchIconImageObj.GetComponent<RectTransform>();
-        switchIconImageRect.anchorMin = new Vector2(0.5f, 0.5f);
-        switchIconImageRect.anchorMax = new Vector2(0.5f, 0.5f);
-        switchIconImageRect.pivot = new Vector2(0.5f, 0.5f);
-        switchIconImageRect.anchoredPosition = Vector2.zero;
-        switchIconImageRect.sizeDelta = new Vector2(58f, 58f);
-        switchIconImage = switchIconImageObj.GetComponent<Image>();
-        // Preserve icon pixels as-authored (black drawing + transparent background).
-        switchIconImage.color = Color.white;
-        switchIconImage.raycastTarget = false;
-        switchIconImage.enabled = true;
+        // Make this an icon-only affordance.
+        var switchLabel = switchObj.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (switchLabel != null)
+            switchLabel.text = string.Empty;
 
         var switchProgressObj = new GameObject("ModeSwitchDwellProgress", typeof(RectTransform), typeof(Image));
-        switchProgressObj.transform.SetParent(switchObj.transform, false);
+        switchProgressObj.transform.SetParent(switchIconImage.transform, false);
         var switchProgressRect = switchProgressObj.GetComponent<RectTransform>();
-        switchProgressRect.anchorMin = new Vector2(1f, 0.5f);
-        switchProgressRect.anchorMax = new Vector2(1f, 0.5f);
-        switchProgressRect.pivot = new Vector2(0f, 0.5f);
-        switchProgressRect.anchoredPosition = new Vector2(10f, 0f);
-        switchProgressRect.sizeDelta = new Vector2(52f, 52f);
+        switchProgressRect.anchorMin = Vector2.zero;
+        switchProgressRect.anchorMax = Vector2.one;
+        switchProgressRect.pivot = new Vector2(0.5f, 0.5f);
+        switchProgressRect.anchoredPosition = Vector2.zero;
+        switchProgressRect.sizeDelta = Vector2.zero;
 
         switchDwellProgressImage = switchProgressObj.GetComponent<Image>();
         switchDwellProgressImage.sprite = CreateCircleSprite(192);
@@ -617,152 +599,36 @@ public static class VRVideoPlayerSetup
         switchDwellProgressImage.color = new Color(0.80f, 0.90f, 1f, 0.95f);
         switchDwellProgressImage.raycastTarget = false;
 
-        switchDialogRoot = new GameObject("ModeSwitchDialog", typeof(RectTransform), typeof(Image), typeof(Outline));
-        switchDialogRoot.transform.SetParent(contentHostObj.transform, false);
-        var dialogRect = switchDialogRoot.GetComponent<RectTransform>();
-        dialogRect.anchorMin = new Vector2(0.5f, 0.5f);
-        dialogRect.anchorMax = new Vector2(0.5f, 0.5f);
-        dialogRect.pivot = new Vector2(0.5f, 0.5f);
-        dialogRect.anchoredPosition = new Vector2(0f, 20f);
-        dialogRect.sizeDelta = new Vector2(1060f, 410f);
-        var dialogImage = switchDialogRoot.GetComponent<Image>();
-        dialogImage.sprite = rounded;
-        dialogImage.type = Image.Type.Sliced;
-        dialogImage.color = new Color(0.03f, 0.06f, 0.10f, 0.98f);
-        var dialogOutline = switchDialogRoot.GetComponent<Outline>();
-        dialogOutline.effectColor = new Color(0.63f, 0.76f, 0.94f, 0.28f);
-        dialogOutline.effectDistance = new Vector2(2f, -2f);
-        dialogOutline.useGraphicAlpha = true;
+        GameObject switchTooltipPrefab =
+            AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/Tooltip/Tooltip.prefab") ??
+            AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/tooltip.prefab");
+        if (switchTooltipPrefab != null)
+        {
+            switchTooltipRoot = PrefabUtility.InstantiatePrefab(switchTooltipPrefab, contentHostObj.transform) as GameObject;
+            if (switchTooltipRoot != null)
+            {
+                switchTooltipRoot.name = "ControllerOnlyTooltip";
+                var tooltipRt = switchTooltipRoot.GetComponent<RectTransform>();
+                if (tooltipRt != null)
+                {
+                    var pos = switchTooltipRoot.AddComponent<TooltipPositioner>();
+                    pos.tooltipRect = tooltipRt;
+                    pos.anchorRect = switchRect;
+                    pos.boundsRect = contentHostRt;
+                    pos.positioningRoot = contentHostRt;
+                    pos.preferredPlacement = TooltipPositioner.Placement.Left;
+                    pos.gap = 12f;
+                    pos.offset = new Vector2(0f, 4f);
+                    pos.keepWithinBounds = true;
+                }
 
-        var dialogTitleObj = new GameObject("Title", typeof(RectTransform), typeof(TextMeshProUGUI));
-        dialogTitleObj.transform.SetParent(switchDialogRoot.transform, false);
-        var dialogTitleRect = dialogTitleObj.GetComponent<RectTransform>();
-        dialogTitleRect.anchorMin = new Vector2(0.5f, 1f);
-        dialogTitleRect.anchorMax = new Vector2(0.5f, 1f);
-        dialogTitleRect.pivot = new Vector2(0.5f, 1f);
-        dialogTitleRect.anchoredPosition = new Vector2(0f, -36f);
-        dialogTitleRect.sizeDelta = new Vector2(920f, 80f);
-        var dialogTitleText = dialogTitleObj.GetComponent<TextMeshProUGUI>();
-        dialogTitleText.text = "Switch to controller mode?";
-        dialogTitleText.fontSize = 54f;
-        dialogTitleText.alignment = TextAlignmentOptions.Center;
-        dialogTitleText.textWrappingMode = TextWrappingModes.NoWrap;
-        dialogTitleText.color = Color.white;
+                switchTooltipText = switchTooltipRoot.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (switchTooltipText != null)
+                    switchTooltipText.raycastTarget = false;
 
-        var dialogBodyObj = new GameObject("Body", typeof(RectTransform), typeof(TextMeshProUGUI));
-        dialogBodyObj.transform.SetParent(switchDialogRoot.transform, false);
-        var dialogBodyRect = dialogBodyObj.GetComponent<RectTransform>();
-        dialogBodyRect.anchorMin = new Vector2(0.5f, 0.5f);
-        dialogBodyRect.anchorMax = new Vector2(0.5f, 0.5f);
-        dialogBodyRect.pivot = new Vector2(0.5f, 0.5f);
-        dialogBodyRect.anchoredPosition = new Vector2(0f, 32f);
-        dialogBodyRect.sizeDelta = new Vector2(940f, 150f);
-        var dialogBodyText = dialogBodyObj.GetComponent<TextMeshProUGUI>();
-        dialogBodyText.text = "Switching without controllers can lock interaction.\nDo you want to continue?";
-        dialogBodyText.fontSize = 36f;
-        dialogBodyText.alignment = TextAlignmentOptions.Center;
-        dialogBodyText.textWrappingMode = TextWrappingModes.Normal;
-        dialogBodyText.color = new Color(0.87f, 0.93f, 1f, 0.97f);
-
-        var cancelObj = new GameObject("CancelButton", typeof(RectTransform), typeof(Image), typeof(Outline));
-        cancelObj.transform.SetParent(switchDialogRoot.transform, false);
-        switchDialogCancelRect = cancelObj.GetComponent<RectTransform>();
-        switchDialogCancelRect.anchorMin = new Vector2(0.5f, 0f);
-        switchDialogCancelRect.anchorMax = new Vector2(0.5f, 0f);
-        switchDialogCancelRect.pivot = new Vector2(0.5f, 0f);
-        switchDialogCancelRect.anchoredPosition = new Vector2(-180f, 32f);
-        switchDialogCancelRect.sizeDelta = new Vector2(330f, 92f);
-        switchDialogCancelImage = cancelObj.GetComponent<Image>();
-        switchDialogCancelImage.sprite = rounded;
-        switchDialogCancelImage.type = Image.Type.Sliced;
-        switchDialogCancelImage.color = new Color(0.18f, 0.45f, 0.94f, 1f);
-        var cancelOutline = cancelObj.GetComponent<Outline>();
-        cancelOutline.effectColor = new Color(0.75f, 0.86f, 1f, 0.20f);
-        cancelOutline.effectDistance = new Vector2(2f, -2f);
-        cancelOutline.useGraphicAlpha = true;
-
-        var cancelTextObj = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
-        cancelTextObj.transform.SetParent(cancelObj.transform, false);
-        var cancelTextRect = cancelTextObj.GetComponent<RectTransform>();
-        cancelTextRect.anchorMin = Vector2.zero;
-        cancelTextRect.anchorMax = Vector2.one;
-        cancelTextRect.offsetMin = Vector2.zero;
-        cancelTextRect.offsetMax = Vector2.zero;
-        var cancelText = cancelTextObj.GetComponent<TextMeshProUGUI>();
-        cancelText.text = "Cancel";
-        cancelText.fontSize = 40f;
-        cancelText.alignment = TextAlignmentOptions.Center;
-        cancelText.textWrappingMode = TextWrappingModes.NoWrap;
-        cancelText.color = Color.white;
-
-        var cancelProgressObj = new GameObject("DwellProgress", typeof(RectTransform), typeof(Image));
-        cancelProgressObj.transform.SetParent(cancelObj.transform, false);
-        var cancelProgressRect = cancelProgressObj.GetComponent<RectTransform>();
-        cancelProgressRect.anchorMin = new Vector2(1f, 0.5f);
-        cancelProgressRect.anchorMax = new Vector2(1f, 0.5f);
-        cancelProgressRect.pivot = new Vector2(1f, 0.5f);
-        cancelProgressRect.anchoredPosition = new Vector2(-12f, 0f);
-        cancelProgressRect.sizeDelta = new Vector2(46f, 46f);
-        switchDialogCancelProgressImage = cancelProgressObj.GetComponent<Image>();
-        switchDialogCancelProgressImage.sprite = CreateCircleSprite(192);
-        switchDialogCancelProgressImage.type = Image.Type.Filled;
-        switchDialogCancelProgressImage.fillMethod = Image.FillMethod.Radial360;
-        switchDialogCancelProgressImage.fillOrigin = (int)Image.Origin360.Top;
-        switchDialogCancelProgressImage.fillClockwise = true;
-        switchDialogCancelProgressImage.fillAmount = 0f;
-        switchDialogCancelProgressImage.color = new Color(0.86f, 0.93f, 1f, 0.95f);
-        switchDialogCancelProgressImage.raycastTarget = false;
-
-        var confirmObj = new GameObject("ConfirmButton", typeof(RectTransform), typeof(Image), typeof(Outline));
-        confirmObj.transform.SetParent(switchDialogRoot.transform, false);
-        switchDialogConfirmRect = confirmObj.GetComponent<RectTransform>();
-        switchDialogConfirmRect.anchorMin = new Vector2(0.5f, 0f);
-        switchDialogConfirmRect.anchorMax = new Vector2(0.5f, 0f);
-        switchDialogConfirmRect.pivot = new Vector2(0.5f, 0f);
-        switchDialogConfirmRect.anchoredPosition = new Vector2(180f, 32f);
-        switchDialogConfirmRect.sizeDelta = new Vector2(250f, 92f);
-        switchDialogConfirmImage = confirmObj.GetComponent<Image>();
-        switchDialogConfirmImage.sprite = rounded;
-        switchDialogConfirmImage.type = Image.Type.Sliced;
-        switchDialogConfirmImage.color = new Color(0.10f, 0.14f, 0.20f, 1f);
-        var confirmOutline = confirmObj.GetComponent<Outline>();
-        confirmOutline.effectColor = new Color(0.64f, 0.77f, 0.95f, 0.25f);
-        confirmOutline.effectDistance = new Vector2(2f, -2f);
-        confirmOutline.useGraphicAlpha = true;
-
-        var confirmTextObj = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
-        confirmTextObj.transform.SetParent(confirmObj.transform, false);
-        var confirmTextRect = confirmTextObj.GetComponent<RectTransform>();
-        confirmTextRect.anchorMin = Vector2.zero;
-        confirmTextRect.anchorMax = Vector2.one;
-        confirmTextRect.offsetMin = Vector2.zero;
-        confirmTextRect.offsetMax = Vector2.zero;
-        var confirmText = confirmTextObj.GetComponent<TextMeshProUGUI>();
-        confirmText.text = "Confirm";
-        confirmText.fontSize = 34f;
-        confirmText.alignment = TextAlignmentOptions.Center;
-        confirmText.textWrappingMode = TextWrappingModes.NoWrap;
-        confirmText.color = new Color(0.86f, 0.93f, 1f, 0.98f);
-
-        var confirmProgressObj = new GameObject("DwellProgress", typeof(RectTransform), typeof(Image));
-        confirmProgressObj.transform.SetParent(confirmObj.transform, false);
-        var confirmProgressRect = confirmProgressObj.GetComponent<RectTransform>();
-        confirmProgressRect.anchorMin = new Vector2(1f, 0.5f);
-        confirmProgressRect.anchorMax = new Vector2(1f, 0.5f);
-        confirmProgressRect.pivot = new Vector2(1f, 0.5f);
-        confirmProgressRect.anchoredPosition = new Vector2(-12f, 0f);
-        confirmProgressRect.sizeDelta = new Vector2(46f, 46f);
-        switchDialogConfirmProgressImage = confirmProgressObj.GetComponent<Image>();
-        switchDialogConfirmProgressImage.sprite = CreateCircleSprite(192);
-        switchDialogConfirmProgressImage.type = Image.Type.Filled;
-        switchDialogConfirmProgressImage.fillMethod = Image.FillMethod.Radial360;
-        switchDialogConfirmProgressImage.fillOrigin = (int)Image.Origin360.Top;
-        switchDialogConfirmProgressImage.fillClockwise = true;
-        switchDialogConfirmProgressImage.fillAmount = 0f;
-        switchDialogConfirmProgressImage.color = new Color(0.86f, 0.93f, 1f, 0.95f);
-        switchDialogConfirmProgressImage.raycastTarget = false;
-
-        switchDialogRoot.SetActive(false);
+                switchTooltipRoot.SetActive(false);
+            }
+        }
 
         return panelObj.transform;
     }
