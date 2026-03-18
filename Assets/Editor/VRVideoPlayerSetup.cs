@@ -65,7 +65,16 @@ public static class VRVideoPlayerSetup
         modeManager.switchButtonImage = switchImage;
         modeManager.switchButtonIconImage = switchIconImage;
         modeManager.switchDwellProgressImage = switchDwellProgressImage;
-        var lockOnIcon = LoadSpriteFromImagesFile("lock-on.png");
+        var lockOnIcon = LoadSpriteFromAtlasByName("Assets/Images/OCUI_24_Filled_2x.png", "icon_lock_24_Filled");
+        if (lockOnIcon == null)
+            lockOnIcon = LoadSpriteByNameAcrossProject("icon_lock_24_Filled");
+        if (lockOnIcon == null)
+            lockOnIcon = LoadSpriteFromImagesFile("lock-on.png");
+        if (lockOnIcon == null)
+        {
+            Debug.LogWarning("VRVideoPlayerSetup: Could not find UI Set sprite named 'lock-on'. Using generated fallback icon.");
+            lockOnIcon = CreateLockOnSprite(128, 128);
+        }
         modeManager.controllerIconSprite = lockOnIcon;
         modeManager.headGazeIconSprite = lockOnIcon;
         modeManager.switchControllerOnly = true;
@@ -265,6 +274,72 @@ public static class VRVideoPlayerSetup
         Debug.LogWarning($"VRVideoPlayerSetup: Could not load icon '{fileName}'. Searched Assets/Images and all Assets for stem '{stem}'.");
         return null;
     }
+
+    private static Sprite LoadSpriteByNameAcrossProject(string spriteName)
+    {
+        if (string.IsNullOrWhiteSpace(spriteName))
+            return null;
+
+        string normalizedTarget = NormalizeName(spriteName);
+        string[] guids = AssetDatabase.FindAssets($"{spriteName} t:Sprite", new[] { "Assets", "Packages" });
+        foreach (string guid in guids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            if (string.IsNullOrWhiteSpace(path))
+                continue;
+
+            Object[] assets = AssetDatabase.LoadAllAssetsAtPath(path);
+            if (assets == null || assets.Length == 0)
+                continue;
+
+            foreach (Object asset in assets)
+            {
+                if (!(asset is Sprite sprite) || sprite == null)
+                    continue;
+
+                string normalizedName = NormalizeName(sprite.name);
+                if (normalizedName == normalizedTarget || normalizedName.Contains(normalizedTarget))
+                    return sprite;
+            }
+        }
+
+        return null;
+    }
+
+    private static Sprite LoadSpriteFromAtlasByName(string atlasPath, string spriteName)
+    {
+        if (string.IsNullOrWhiteSpace(atlasPath) || string.IsNullOrWhiteSpace(spriteName))
+            return null;
+
+        Object[] assets = AssetDatabase.LoadAllAssetsAtPath(atlasPath);
+        if (assets == null || assets.Length == 0)
+            return null;
+
+        string normalizedTarget = NormalizeName(spriteName);
+        foreach (Object asset in assets)
+        {
+            if (!(asset is Sprite sprite) || sprite == null)
+                continue;
+
+            string normalizedName = NormalizeName(sprite.name);
+            if (normalizedName == normalizedTarget || normalizedName.Contains(normalizedTarget))
+                return sprite;
+        }
+
+        return null;
+    }
+
+    private static string NormalizeName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return value.ToLowerInvariant()
+            .Replace("-", string.Empty)
+            .Replace("_", string.Empty)
+            .Replace(" ", string.Empty);
+    }
+
 
     private static Sprite LoadOrImportSpriteAtPath(string path)
     {
@@ -775,5 +850,44 @@ public static class VRVideoPlayerSetup
 
         tex.Apply(false, false);
         return Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f);
+    }
+
+    private static Sprite CreateLockOnSprite(int width, int height)
+    {
+        Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        tex.name = "LockOnIcon";
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+
+        float cx = (width - 1) * 0.5f;
+        float cy = (height - 1) * 0.5f;
+        float rOuter = Mathf.Min(width, height) * 0.38f;
+        float rInner = Mathf.Min(width, height) * 0.26f;
+        float ringThickness = Mathf.Max(2f, Mathf.Min(width, height) * 0.045f);
+        float crossThickness = Mathf.Max(2f, Mathf.Min(width, height) * 0.035f);
+        float feather = 1.25f;
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                float dx = x - cx;
+                float dy = y - cy;
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+
+                float outerRing = 1f - Mathf.Clamp01(Mathf.Abs(d - rOuter) / (ringThickness + feather));
+                float innerRing = 1f - Mathf.Clamp01(Mathf.Abs(d - rInner) / (ringThickness + feather));
+
+                float vBar = 1f - Mathf.Clamp01((Mathf.Abs(dx) - crossThickness) / feather);
+                float hBar = 1f - Mathf.Clamp01((Mathf.Abs(dy) - crossThickness) / feather);
+                float bars = Mathf.Max(vBar, hBar);
+
+                float alpha = Mathf.Clamp01(Mathf.Max(Mathf.Max(outerRing, innerRing), bars));
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+            }
+        }
+
+        tex.Apply(false, false);
+        return Sprite.Create(tex, new Rect(0f, 0f, width, height), new Vector2(0.5f, 0.5f), 100f);
     }
 }
