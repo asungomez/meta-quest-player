@@ -53,6 +53,8 @@ public static class VRVideoPlayerSetup
             out RectTransform filePickerRect,
             out Image filePickerProgressImage,
             out Image filePickerIconImage,
+            out GameObject filePickerTooltipRoot,
+            out TextMeshProUGUI filePickerTooltipText,
             out Image progressImage,
             out Image startButtonIconImage,
             out GameObject startButtonTooltipRoot,
@@ -114,7 +116,11 @@ public static class VRVideoPlayerSetup
         filePickerInteractor.iconToReplaceWhileProgress = filePickerIconImage;
         filePickerInteractor.statusText = subtitleText;
         filePickerInteractor.dwellSeconds = 1.0f;
-        filePickerInteractor.controllerOnly = false;
+        filePickerInteractor.controllerOnly = true;
+        filePickerInteractor.onlyVisibleWhenUnlocked = true;
+        filePickerInteractor.controllerOnlyTooltipRoot = filePickerTooltipRoot;
+        filePickerInteractor.controllerOnlyTooltipText = filePickerTooltipText;
+        filePickerInteractor.controllerOnlyTooltip = "This button is only available with controllers.";
         filePickerInteractor.noSelectionStatus = "No videos in the library";
         filePickerInteractor.pickingStatus = "Opening file picker...";
         filePickerInteractor.pickedStatusFormat = "Selected: {0}";
@@ -545,6 +551,8 @@ public static class VRVideoPlayerSetup
         out RectTransform filePickerRect,
         out Image filePickerProgressImage,
         out Image filePickerIconImage,
+        out GameObject filePickerTooltipRoot,
+        out TextMeshProUGUI filePickerTooltipText,
         out Image progressImage,
         out Image startButtonIconImage,
         out GameObject startButtonTooltipRoot,
@@ -562,6 +570,8 @@ public static class VRVideoPlayerSetup
         filePickerRect = null;
         filePickerProgressImage = null;
         filePickerIconImage = null;
+        filePickerTooltipRoot = null;
+        filePickerTooltipText = null;
         progressImage = null;
         startButtonIconImage = null;
         startButtonTooltipRoot = null;
@@ -704,6 +714,37 @@ public static class VRVideoPlayerSetup
         filePickerProgressImage.fillAmount = 0f;
         filePickerProgressImage.color = new Color(0.84f, 0.93f, 1f, 0.9f);
         filePickerProgressImage.raycastTarget = false;
+
+        GameObject filePickerTooltipPrefab =
+            AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/Tooltip/Tooltip.prefab") ??
+            AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/tooltip.prefab");
+        if (filePickerTooltipPrefab != null)
+        {
+            filePickerTooltipRoot = PrefabUtility.InstantiatePrefab(filePickerTooltipPrefab, contentHostObj.transform) as GameObject;
+            if (filePickerTooltipRoot != null)
+            {
+                filePickerTooltipRoot.name = "FilePickerControllerOnlyTooltip";
+                var tooltipRt = filePickerTooltipRoot.GetComponent<RectTransform>();
+                if (tooltipRt != null)
+                {
+                    var pos = filePickerTooltipRoot.AddComponent<TooltipPositioner>();
+                    pos.tooltipRect = tooltipRt;
+                    pos.anchorRect = filePickerRect;
+                    pos.boundsRect = contentHostRt;
+                    pos.positioningRoot = contentHostRt;
+                    pos.preferredPlacement = TooltipPositioner.Placement.Top;
+                    pos.gap = 4f;
+                    pos.offset = new Vector2(0f, -8f);
+                    pos.keepWithinBounds = true;
+                }
+
+                filePickerTooltipText = filePickerTooltipRoot.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (filePickerTooltipText != null)
+                    filePickerTooltipText.raycastTarget = false;
+
+                filePickerTooltipRoot.SetActive(false);
+            }
+        }
 
         GameObject buttonObj = null;
         const string startButtonPrefabPath = "Assets/Prefabs/UI/UnityUIButtonBased/TextTileButton_IconAndLabel_Regular_UnityUIButton.prefab";

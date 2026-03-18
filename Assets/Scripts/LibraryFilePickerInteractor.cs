@@ -32,6 +32,7 @@ public class LibraryFilePickerInteractor : MonoBehaviour
     public float dwellSeconds = 1.0f;
     public bool controllerOnly = false;
     public string controllerOnlyTooltip = "This button is only available with controllers.";
+    public bool onlyVisibleWhenUnlocked = true;
 
     [Header("Copy")]
     public string pickingStatus = "Opening file picker...";
@@ -47,6 +48,7 @@ public class LibraryFilePickerInteractor : MonoBehaviour
     private bool isPicking;
     private Button nativeButton;
     private RectTransform controllerOnlyTooltipRect;
+    private bool lastVisibleState = true;
 
     private void Awake()
     {
@@ -75,6 +77,21 @@ public class LibraryFilePickerInteractor : MonoBehaviour
     {
         if (modeManager == null || targetRect == null)
             return;
+
+        bool shouldBeVisible = !onlyVisibleWhenUnlocked || !modeManager.IsLocked;
+        if (targetRect.gameObject.activeSelf != shouldBeVisible)
+            targetRect.gameObject.SetActive(shouldBeVisible);
+        if (!shouldBeVisible)
+        {
+            if (lastVisibleState)
+            {
+                ResetHoverState();
+                SetControllerOnlyTooltipVisible(false);
+                lastVisibleState = false;
+            }
+            return;
+        }
+        lastVisibleState = true;
 
         if (modeManager.IsControllerSwitchDialogOpen)
         {
