@@ -49,6 +49,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Assets/Scripts/StartButtonInteractor.cs" />
+    <Compile Include="Assets/Scripts/FileSelectionDialogController.cs" />
     <Compile Include="Assets/Scripts/HeadGazeButtonHover.cs" />
     <Compile Include="Assets/Scripts/TooltipPositioner.cs" />
     <Compile Include="Assets/Scripts/HeadGazePointer.cs" />
@@ -60,6 +61,7 @@
     <Compile Include="Assets/TutorialInfo/Scripts/Readme.cs" />
     <Compile Include="Assets/Scripts/VideoLibraryController.cs" />
     <Compile Include="Assets/Scripts/QuestPassthroughController.cs" />
+    <Compile Include="Assets/Scripts/UiSetButtonInteractor.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets/TextMesh Pro/Shaders/TMPro.cginc" />
@@ -1488,12 +1490,12 @@
       <HintPath>Library/ScriptAssemblies/Meta.WitAI.Lib.Editor.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Unity.XR.Management">
-      <HintPath>Library/ScriptAssemblies/Unity.XR.Management.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
     <Reference Include="NativeFilePicker.Runtime">
       <HintPath>Library/ScriptAssemblies/NativeFilePicker.Runtime.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Unity.XR.Management">
+      <HintPath>Library/ScriptAssemblies/Unity.XR.Management.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Meta.Wit.Dictation.Editor">

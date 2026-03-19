@@ -3,6 +3,7 @@ using UnityEditor;
 using TMPro;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using System.Collections.Generic;
 
 /// <summary>
 /// Editor menu to set up a minimal passthrough + welcome screen scene.
@@ -11,6 +12,8 @@ public static class VRVideoPlayerSetup
 {
     private const string SecondaryButtonPrefabPath = "Assets/Prefabs/UI/UnityUIButtonBased/SecondaryButton_IconAndLabel_UnityUIButton.prefab";
     private const string FilePickerButtonVariantPath = "Assets/Prefabs/UI/UnityUIButtonBased/FilePickerButton_UnityUIButton.prefab";
+    private const string UiSetDialog2ButtonTextOnlyLocalPath = "Assets/Prefabs/UI/Dialog/Dialog2Button_TextOnly.prefab";
+    private const string UiSetDialog2ButtonTextOnlyPackagePath = "Packages/com.meta.xr.sdk.interaction/Runtime/Sample/Objects/UISet/Prefabs/Dialog/Dialog2Button_TextOnly.prefab";
 
     [MenuItem("VR Video Player/Setup Scene")]
     public static void SetupScene()
@@ -47,6 +50,7 @@ public static class VRVideoPlayerSetup
 
         BuildWelcomeCanvas(
             welcomeScreen.transform,
+            out RectTransform contentHostRect,
             out RectTransform buttonRect,
             out Image buttonImage,
             out TextMeshProUGUI subtitleText,
@@ -125,6 +129,19 @@ public static class VRVideoPlayerSetup
         filePickerInteractor.pickingStatus = "Opening file picker...";
         filePickerInteractor.pickedStatusFormat = "Selected: {0}";
         filePickerInteractor.pickerUnavailableStatus = "Picker unavailable. See logcat.";
+
+        BuildFileSelectionDialog(
+            contentHostRect,
+            modeManager,
+            subtitleText,
+            out FileSelectionDialogController dialogController);
+        if (dialogController != null)
+        {
+            filePickerInteractor.dialogController = dialogController;
+            if (filePickerInteractor.onFilePicked == null)
+                filePickerInteractor.onFilePicked = new LibraryFilePickerInteractor.FilePickedEvent();
+            Debug.Log("VRVideoPlayerSetup: File picker dialog controller wired.");
+        }
 
         EnsureNativeUiRayInteractionActive();
 
@@ -543,8 +560,333 @@ public static class VRVideoPlayerSetup
         layout.padding.left = 15;
     }
 
+    private static void BuildFileSelectionDialog(
+        RectTransform contentHostRect,
+        ControlModeManager modeManager,
+        TMP_Text subtitleText,
+        out FileSelectionDialogController dialogController)
+    {
+        dialogController = null;
+        if (contentHostRect == null)
+            return;
+
+        GameObject dialogPrefab =
+            AssetDatabase.LoadAssetAtPath<GameObject>(UiSetDialog2ButtonTextOnlyLocalPath) ??
+            AssetDatabase.LoadAssetAtPath<GameObject>(UiSetDialog2ButtonTextOnlyPackagePath);
+        if (dialogPrefab == null)
+        {
+            Debug.LogWarning(
+                "VRVideoPlayerSetup: UI Set dialog prefab not found. " +
+                $"Checked '{UiSetDialog2ButtonTextOnlyLocalPath}' and '{UiSetDialog2ButtonTextOnlyPackagePath}'.");
+            return;
+        }
+
+        var dialogHostObj = new GameObject("FileSelectionDialogHost", typeof(RectTransform));
+        dialogHostObj.transform.SetParent(contentHostRect, false);
+        var dialogHostRt = dialogHostObj.GetComponent<RectTransform>();
+        dialogHostRt.anchorMin = Vector2.zero;
+        dialogHostRt.anchorMax = Vector2.one;
+        dialogHostRt.offsetMin = Vector2.zero;
+        dialogHostRt.offsetMax = Vector2.zero;
+
+        var dialogObj = PrefabUtility.InstantiatePrefab(dialogPrefab, dialogHostObj.transform) as GameObject;
+        if (dialogObj == null)
+            return;
+
+        dialogObj.name = "FileSelectionDialog";
+        var dialogRect = dialogObj.GetComponent<RectTransform>();
+        if (dialogRect != null)
+        {
+            dialogRect.anchorMin = new Vector2(0.5f, 0.5f);
+            dialogRect.anchorMax = new Vector2(0.5f, 0.5f);
+            dialogRect.pivot = new Vector2(0.5f, 0.5f);
+            dialogRect.anchoredPosition = new Vector2(0f, 24f);
+        }
+
+        TextMeshProUGUI title = FindDialogTitleText(dialogObj);
+
+        if (!TryGetDialogActionTargets(dialogObj, out RectTransform saveTarget, out RectTransform exitTarget))
+        {
+            Debug.LogWarning("VRVideoPlayerSetup: Dialog prefab does not contain two action targets (Button/Toggle/Selectable).");
+            dialogObj.SetActive(false);
+            return;
+        }
+
+        ResolveDialogActionRolesFromPrefab(saveTarget, exitTarget, out RectTransform resolvedSaveTarget, out RectTransform resolvedExitTarget);
+
+        dialogController = dialogObj.AddComponent<FileSelectionDialogController>();
+        dialogController.modeManager = modeManager;
+        dialogController.dialogRoot = dialogHostObj;
+        dialogController.titleText = title;
+        dialogController.bodyText = FindDialogBodyText(dialogObj, title, resolvedSaveTarget, resolvedExitTarget);
+        dialogController.subtitleText = subtitleText;
+
+        ConfigureDialogButtonInteractor(resolvedSaveTarget, modeManager, contentHostRect, dialogController, UiSetButtonInteractor.DialogAction.Save);
+        ConfigureDialogButtonInteractor(resolvedExitTarget, modeManager, contentHostRect, dialogController, UiSetButtonInteractor.DialogAction.Exit);
+
+        dialogHostObj.SetActive(false);
+    }
+
+    private static void ResolveDialogActionRolesFromPrefab(RectTransform first, RectTransform second, out RectTransform save, out RectTransform exit)
+    {
+        save = first;
+        exit = second;
+        if (first == null || second == null)
+            return;
+
+        bool firstLooksSave = LooksLikeAction(first, "save", "confirm", "ok");
+        bool firstLooksExit = LooksLikeAction(first, "exit", "cancel", "close");
+        bool secondLooksSave = LooksLikeAction(second, "save", "confirm", "ok");
+        bool secondLooksExit = LooksLikeAction(second, "exit", "cancel", "close");
+
+        if (firstLooksSave && secondLooksExit)
+        {
+            save = first;
+            exit = second;
+            return;
+        }
+        if (secondLooksSave && firstLooksExit)
+        {
+            save = second;
+            exit = first;
+            return;
+        }
+
+        // Fallback: keep current ordering from prefab and log so designers can rename controls for deterministic mapping.
+        Debug.LogWarning(
+            "VRVideoPlayerSetup: Could not infer Save/Exit controls from prefab names/text. " +
+            "Using prefab order for action wiring. Rename button objects/text to include 'Save' and 'Exit' for deterministic mapping.");
+    }
+
+    private static bool LooksLikeAction(RectTransform target, params string[] keywords)
+    {
+        if (target == null)
+            return false;
+
+        string name = target.gameObject.name.ToLowerInvariant();
+        for (int i = 0; i < keywords.Length; i++)
+        {
+            if (name.Contains(keywords[i]))
+                return true;
+        }
+
+        var text = target.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (text == null || string.IsNullOrWhiteSpace(text.text))
+            return false;
+        string label = text.text.ToLowerInvariant();
+        for (int i = 0; i < keywords.Length; i++)
+        {
+            if (label.Contains(keywords[i]))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static TextMeshProUGUI FindDialogTitleText(GameObject dialogObj)
+    {
+        if (dialogObj == null)
+            return null;
+
+        var allTexts = dialogObj.GetComponentsInChildren<TextMeshProUGUI>(true);
+        TextMeshProUGUI byName = null;
+        for (int i = 0; i < allTexts.Length; i++)
+        {
+            var t = allTexts[i];
+            if (t == null)
+                continue;
+            string n = t.gameObject.name.ToLowerInvariant();
+            if (n.Contains("title") || n.Contains("header"))
+            {
+                byName = t;
+                break;
+            }
+        }
+        if (byName != null)
+            return byName;
+
+        TextMeshProUGUI largest = null;
+        float maxSize = float.MinValue;
+        for (int i = 0; i < allTexts.Length; i++)
+        {
+            var t = allTexts[i];
+            if (t == null)
+                continue;
+            if (t.fontSize > maxSize)
+            {
+                maxSize = t.fontSize;
+                largest = t;
+            }
+        }
+        return largest;
+    }
+
+    private static TextMeshProUGUI FindDialogBodyText(
+        GameObject dialogObj,
+        TextMeshProUGUI titleText,
+        RectTransform saveTarget,
+        RectTransform exitTarget)
+    {
+        if (dialogObj == null)
+            return null;
+
+        var allTexts = dialogObj.GetComponentsInChildren<TextMeshProUGUI>(true);
+        TextMeshProUGUI best = null;
+        int bestLen = -1;
+
+        foreach (var t in allTexts)
+        {
+            if (t == null || t == titleText)
+                continue;
+
+            if (saveTarget != null && t.transform.IsChildOf(saveTarget))
+                continue;
+            if (exitTarget != null && t.transform.IsChildOf(exitTarget))
+                continue;
+
+            int len = string.IsNullOrWhiteSpace(t.text) ? 0 : t.text.Trim().Length;
+            if (len > bestLen)
+            {
+                best = t;
+                bestLen = len;
+            }
+        }
+
+        return best;
+    }
+
+    private static bool TryGetDialogActionTargets(GameObject dialogObj, out RectTransform first, out RectTransform second)
+    {
+        first = null;
+        second = null;
+        if (dialogObj == null)
+            return false;
+
+        var buttons = dialogObj.GetComponentsInChildren<Button>(true);
+        if (buttons.Length >= 2)
+        {
+            first = buttons[0].GetComponent<RectTransform>();
+            second = buttons[1].GetComponent<RectTransform>();
+            return first != null && second != null;
+        }
+
+        var toggles = dialogObj.GetComponentsInChildren<Toggle>(true);
+        if (toggles.Length >= 2)
+        {
+            first = toggles[0].GetComponent<RectTransform>();
+            second = toggles[1].GetComponent<RectTransform>();
+            return first != null && second != null;
+        }
+
+        var selectables = dialogObj.GetComponentsInChildren<Selectable>(true);
+        var uniqueRoots = new List<RectTransform>();
+        foreach (var selectable in selectables)
+        {
+            if (selectable == null)
+                continue;
+            var rt = selectable.GetComponent<RectTransform>();
+            if (rt == null)
+                continue;
+            if (!uniqueRoots.Contains(rt))
+                uniqueRoots.Add(rt);
+        }
+
+        if (uniqueRoots.Count >= 2)
+        {
+            first = uniqueRoots[0];
+            second = uniqueRoots[1];
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void ConfigureDialogButtonInteractor(
+        RectTransform actionTarget,
+        ControlModeManager modeManager,
+        RectTransform contentHostRect,
+        FileSelectionDialogController dialogController,
+        UiSetButtonInteractor.DialogAction dialogAction)
+    {
+        if (actionTarget == null || modeManager == null)
+            return;
+
+        var interactor = actionTarget.gameObject.AddComponent<UiSetButtonInteractor>();
+        interactor.modeManager = modeManager;
+        interactor.targetRect = actionTarget;
+        interactor.dwellSeconds = 1.0f;
+        interactor.controllerOnly = false;
+        interactor.requireUnlockedMode = false;
+        interactor.controllerOnlyTooltip = "This button is only available with controllers.";
+        interactor.dialogController = dialogController;
+        interactor.dialogAction = dialogAction;
+
+        var icon = FindRequiredUiSetIconImage(actionTarget.transform);
+        interactor.iconToReplaceWhileProgress = icon;
+
+        var progressParent = icon != null ? icon.transform : actionTarget.transform;
+        var progressObj = new GameObject("DwellProgress", typeof(RectTransform), typeof(Image));
+        progressObj.transform.SetParent(progressParent, false);
+        var progressRect = progressObj.GetComponent<RectTransform>();
+        progressRect.anchorMin = Vector2.zero;
+        progressRect.anchorMax = Vector2.one;
+        progressRect.pivot = new Vector2(0.5f, 0.5f);
+        progressRect.anchoredPosition = Vector2.zero;
+        progressRect.sizeDelta = Vector2.zero;
+
+        var progressImage = progressObj.GetComponent<Image>();
+        progressImage.sprite = CreateCircleSprite(192);
+        progressImage.type = Image.Type.Filled;
+        progressImage.fillMethod = Image.FillMethod.Radial360;
+        progressImage.fillOrigin = (int)Image.Origin360.Top;
+        progressImage.fillClockwise = true;
+        progressImage.fillAmount = 0f;
+        progressImage.color = new Color(0.84f, 0.93f, 1f, 0.9f);
+        progressImage.raycastTarget = false;
+        interactor.progressImage = progressImage;
+
+        // Critical for text-only dialog buttons: keep injected progress overlay out of layout calculations
+        // so it doesn't shift/offset label alignment.
+        var progressLayout = progressObj.AddComponent<LayoutElement>();
+        progressLayout.ignoreLayout = true;
+
+        GameObject tooltipPrefab =
+            AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/Tooltip/Tooltip.prefab") ??
+            AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/tooltip.prefab");
+        if (tooltipPrefab == null)
+            return;
+
+        var tooltipRoot = PrefabUtility.InstantiatePrefab(tooltipPrefab, contentHostRect) as GameObject;
+        if (tooltipRoot == null)
+            return;
+
+        tooltipRoot.name = $"{actionTarget.gameObject.name}ControllerOnlyTooltip";
+        var tooltipRt = tooltipRoot.GetComponent<RectTransform>();
+        if (tooltipRt != null)
+        {
+            var pos = tooltipRoot.AddComponent<TooltipPositioner>();
+            pos.tooltipRect = tooltipRt;
+            pos.anchorRect = interactor.targetRect;
+            pos.boundsRect = contentHostRect;
+            pos.positioningRoot = contentHostRect;
+            pos.preferredPlacement = TooltipPositioner.Placement.Top;
+            pos.gap = 6f;
+            pos.offset = new Vector2(0f, -8f);
+            pos.keepWithinBounds = true;
+        }
+
+        var tooltipText = tooltipRoot.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (tooltipText != null)
+            tooltipText.raycastTarget = false;
+        tooltipRoot.SetActive(false);
+
+        interactor.controllerOnlyTooltipRoot = tooltipRoot;
+        interactor.controllerOnlyTooltipText = tooltipText;
+    }
+
     private static Transform BuildWelcomeCanvas(
         Transform parent,
+        out RectTransform contentHostRect,
         out RectTransform buttonRect,
         out Image buttonImage,
         out TextMeshProUGUI subtitleText,
@@ -564,6 +906,7 @@ public static class VRVideoPlayerSetup
         out GameObject switchTooltipRoot,
         out TextMeshProUGUI switchTooltipText)
     {
+        contentHostRect = null;
         buttonRect = null;
         buttonImage = null;
         subtitleText = null;
@@ -596,11 +939,11 @@ public static class VRVideoPlayerSetup
         // Host app content directly on the backplate rect.
         var contentHostObj = new GameObject("ContentHost", typeof(RectTransform));
         contentHostObj.transform.SetParent(panelObj.transform, false);
-        var contentHostRt = contentHostObj.GetComponent<RectTransform>();
-        contentHostRt.anchorMin = Vector2.zero;
-        contentHostRt.anchorMax = Vector2.one;
-        contentHostRt.offsetMin = Vector2.zero;
-        contentHostRt.offsetMax = Vector2.zero;
+        contentHostRect = contentHostObj.GetComponent<RectTransform>();
+        contentHostRect.anchorMin = Vector2.zero;
+        contentHostRect.anchorMax = Vector2.one;
+        contentHostRect.offsetMin = Vector2.zero;
+        contentHostRect.offsetMax = Vector2.zero;
 
         var contentRootObj = new GameObject("ContentRoot", typeof(RectTransform), typeof(VerticalLayoutGroup));
         contentRootObj.transform.SetParent(contentHostObj.transform, false);
@@ -730,8 +1073,8 @@ public static class VRVideoPlayerSetup
                     var pos = filePickerTooltipRoot.AddComponent<TooltipPositioner>();
                     pos.tooltipRect = tooltipRt;
                     pos.anchorRect = filePickerRect;
-                    pos.boundsRect = contentHostRt;
-                    pos.positioningRoot = contentHostRt;
+                    pos.boundsRect = contentHostRect;
+                    pos.positioningRoot = contentHostRect;
                     pos.preferredPlacement = TooltipPositioner.Placement.Top;
                     pos.gap = 4f;
                     pos.offset = new Vector2(0f, -8f);
@@ -801,8 +1144,8 @@ public static class VRVideoPlayerSetup
                     var pos = startButtonTooltipRoot.AddComponent<TooltipPositioner>();
                     pos.tooltipRect = tooltipRt;
                     pos.anchorRect = buttonRect;
-                    pos.boundsRect = contentHostRt;
-                    pos.positioningRoot = contentHostRt;
+                    pos.boundsRect = contentHostRect;
+                    pos.positioningRoot = contentHostRect;
                     pos.preferredPlacement = TooltipPositioner.Placement.Top;
                     pos.gap = 4f;
                     pos.offset = new Vector2(0f, -8f);
@@ -875,8 +1218,8 @@ public static class VRVideoPlayerSetup
                     var pos = switchTooltipRoot.AddComponent<TooltipPositioner>();
                     pos.tooltipRect = tooltipRt;
                     pos.anchorRect = switchRect;
-                    pos.boundsRect = contentHostRt;
-                    pos.positioningRoot = contentHostRt;
+                    pos.boundsRect = contentHostRect;
+                    pos.positioningRoot = contentHostRect;
                     pos.preferredPlacement = TooltipPositioner.Placement.Left;
                     pos.gap = 12f;
                     pos.offset = new Vector2(0f, 4f);

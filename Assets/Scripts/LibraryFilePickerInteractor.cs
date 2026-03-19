@@ -41,7 +41,8 @@ public class LibraryFilePickerInteractor : MonoBehaviour
     public string pickerUnavailableStatus = "Install NativeFilePicker plugin to select videos.";
 
     [Header("Events")]
-    public FilePickedEvent onFilePicked;
+    public FilePickedEvent onFilePicked = new FilePickedEvent();
+    public FileSelectionDialogController dialogController;
 
     private float dwellTimer;
     private bool activatedThisHover;
@@ -52,6 +53,9 @@ public class LibraryFilePickerInteractor : MonoBehaviour
 
     private void Awake()
     {
+        if (onFilePicked == null)
+            onFilePicked = new FilePickedEvent();
+
         if (targetRect != null)
         {
             nativeButton = targetRect.GetComponentInChildren<Button>(true);
@@ -173,6 +177,17 @@ public class LibraryFilePickerInteractor : MonoBehaviour
 
             if (statusText != null)
                 statusText.text = string.Format(pickedStatusFormat, Path.GetFileName(path));
+
+            if (dialogController != null)
+            {
+                Debug.Log($"{LogTag}: Showing file selection dialog for picked file.");
+                dialogController.ShowForSelectedFile(path);
+            }
+            else
+            {
+                Debug.LogWarning($"{LogTag}: dialogController reference is null; dialog will not open.");
+            }
+
             onFilePicked?.Invoke(path);
         },
         () =>

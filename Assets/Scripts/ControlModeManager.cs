@@ -138,6 +138,16 @@ public class ControlModeManager : MonoBehaviour
             ApplyMode(ControlMode.Locked);
     }
 
+    public void SetDialogOpen(bool open)
+    {
+        IsControllerSwitchDialogOpen = open;
+        if (open)
+        {
+            switchDwellTimer = 0f;
+            SetSwitchControllerOnlyTooltipVisible(false);
+        }
+    }
+
     public bool TryGetInteractionRay(out Ray ray)
     {
         var cam = ResolveGazeCamera();
