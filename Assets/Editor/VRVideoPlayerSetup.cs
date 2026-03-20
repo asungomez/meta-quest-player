@@ -203,6 +203,11 @@ public static class VRVideoPlayerSetup
             if (pointableCanvasModuleType != null && pointableCanvasModuleObject.GetComponent(pointableCanvasModuleType) == null)
                 pointableCanvasModuleObject.AddComponent(pointableCanvasModuleType);
         }
+
+        // Fix: PointableCanvasModule doesn't call SendUpdateEventToSelectedObject(),
+        // which breaks TMP_InputField focus and system keyboard triggering.
+        if (pointableCanvasModuleObject.GetComponent<PointableCanvasInputFix>() == null)
+            pointableCanvasModuleObject.AddComponent<PointableCanvasInputFix>();
     }
 
     private static GameObject FindSceneObjectByNameIncludingInactive(string objectName)
@@ -621,6 +626,10 @@ public static class VRVideoPlayerSetup
         dialogController.bodyText = FindDialogBodyText(dialogObj, title, resolvedSaveTarget, resolvedExitTarget);
         dialogController.subtitleText = subtitleText;
 
+        // Name field: TMP_InputField must exist in the prefab under LibraryNameInput (no runtime UI creation).
+        dialogController.nameInput = FindDialogNameInputField(dialogObj);
+        dialogController.nameHelperText = FindDialogNameHelperText(dialogObj);
+
         ConfigureDialogButtonInteractor(resolvedSaveTarget, modeManager, contentHostRect, dialogController, UiSetButtonInteractor.DialogAction.Save);
         ConfigureDialogButtonInteractor(resolvedExitTarget, modeManager, contentHostRect, dialogController, UiSetButtonInteractor.DialogAction.Exit);
 
@@ -730,6 +739,9 @@ public static class VRVideoPlayerSetup
         if (dialogObj == null)
             return null;
 
+        // Exclude text fields inside the name input group
+        Transform nameInputRoot = dialogObj.transform.Find("LibraryNameInput");
+
         var allTexts = dialogObj.GetComponentsInChildren<TextMeshProUGUI>(true);
         TextMeshProUGUI best = null;
         int bestLen = -1;
@@ -743,6 +755,8 @@ public static class VRVideoPlayerSetup
                 continue;
             if (exitTarget != null && t.transform.IsChildOf(exitTarget))
                 continue;
+            if (nameInputRoot != null && t.transform.IsChildOf(nameInputRoot))
+                continue;
 
             int len = string.IsNullOrWhiteSpace(t.text) ? 0 : t.text.Trim().Length;
             if (len > bestLen)
@@ -754,6 +768,91 @@ public static class VRVideoPlayerSetup
 
         return best;
     }
+
+    /// <summary>
+    /// Finds a <see cref="TMP_InputField"/> already present under <c>LibraryNameInput</c> in the dialog prefab.
+    /// Does not create or modify prefab hierarchy.
+    /// </summary>
+    private static TMP_InputField FindDialogNameInputField(GameObject dialogObj)
+    {
+        if (dialogObj == null)
+            return null;
+
+        var nameInputRoot = dialogObj.transform.Find("LibraryNameInput");
+        if (nameInputRoot == null)
+        {
+            Debug.LogWarning(
+                "VRVideoPlayerSetup: LibraryNameInput not found in dialog prefab. Add LibraryNameInput with a TMP_InputField (e.g. UI Set TextField).");
+            return null;
+        }
+
+        // Paths use '/' — Unity resolves nested children (e.g. UI Set TextInputField prefab).
+        string[] preferredPaths =
+        {
+            "TextInputField/TextField",
+            "TextField",
+            "InputField",
+            "NameInput",
+        };
+        for (int i = 0; i < preferredPaths.Length; i++)
+        {
+            var t = nameInputRoot.Find(preferredPaths[i]);
+            if (t == null)
+                continue;
+            var field = t.GetComponent<TMP_InputField>();
+            if (field != null)
+                return field;
+        }
+
+        var found = nameInputRoot.GetComponentInChildren<TMP_InputField>(true);
+        if (found == null)
+        {
+            Debug.LogWarning(
+                "VRVideoPlayerSetup: No TMP_InputField under LibraryNameInput. Add one in the dialog prefab (Meta UI Set uses child name TextField).");
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// Locates the HelperText label under LibraryNameInput.
+    /// </summary>
+    private static TextMeshProUGUI FindDialogNameHelperText(GameObject dialogObj)
+    {
+        if (dialogObj == null)
+            return null;
+
+        var nameInputRoot = dialogObj.transform.Find("LibraryNameInput");
+        if (nameInputRoot == null)
+            return null;
+
+        string[] helperPaths = { "HelperText", "TextInputField/HelperText" };
+        for (int i = 0; i < helperPaths.Length; i++)
+        {
+            var helperTf = nameInputRoot.Find(helperPaths[i]);
+            if (helperTf == null)
+                continue;
+            // UI Set: TMP is usually on a child (e.g. "Text"), not on the HelperText root.
+            var tmp = helperTf.GetComponent<TextMeshProUGUI>()
+                      ?? helperTf.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (tmp != null)
+                return tmp;
+        }
+
+        // Fallback: first TMPro under LibraryNameInput named HelperText (any depth).
+        foreach (var tr in nameInputRoot.GetComponentsInChildren<Transform>(true))
+        {
+            if (tr == null || tr.name != "HelperText")
+                continue;
+            var tmp = tr.GetComponent<TextMeshProUGUI>()
+                      ?? tr.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (tmp != null)
+                return tmp;
+        }
+
+        return null;
+    }
+
 
     private static bool TryGetDialogActionTargets(GameObject dialogObj, out RectTransform first, out RectTransform second)
     {

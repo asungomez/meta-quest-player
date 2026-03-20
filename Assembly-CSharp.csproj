@@ -1,4 +1,4 @@
-﻿<Project>
+<Project>
   <!-- Generated file, do not modify, your changes will be overwritten (use AssetPostprocessor.OnGeneratedCSProject) -->
   <PropertyGroup>
     <BaseIntermediateOutputPath>Temp/obj/$(MSBuildProjectName)</BaseIntermediateOutputPath>
@@ -51,6 +51,7 @@
     <Compile Include="Assets/Scripts/StartButtonInteractor.cs" />
     <Compile Include="Assets/Scripts/FileSelectionDialogController.cs" />
     <Compile Include="Assets/Scripts/HeadGazeButtonHover.cs" />
+    <Compile Include="Assets/Scripts/PointableCanvasInputFix.cs" />
     <Compile Include="Assets/Scripts/TooltipPositioner.cs" />
     <Compile Include="Assets/Scripts/HeadGazePointer.cs" />
     <Compile Include="Assets/Scripts/NativeFilePickerBridge.cs" />

@@ -353,7 +353,7 @@ public class ControlModeManager : MonoBehaviour
                localHit.y >= r.yMin && localHit.y <= r.yMax;
     }
 
-    private static bool TryGetControllerRay(out Ray ray)
+    public static bool TryGetControllerRay(out Ray ray)
     {
         if (TryGetDeviceRay(InputDeviceCharacteristics.Right | InputDeviceCharacteristics.Controller, out ray))
             return true;
