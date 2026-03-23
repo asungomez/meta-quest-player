@@ -13,6 +13,7 @@ using UnityEngine.UI;
 public class FileSelectionDialogController : MonoBehaviour
 {
     private const string LogTag = "DialogDebug";
+    private const int NestedPopupCanvasSortingOrder = 5000;
 
     public ControlModeManager modeManager;
     public GameObject dialogRoot;
@@ -25,6 +26,9 @@ public class FileSelectionDialogController : MonoBehaviour
     public TMP_InputField nameInput;
     [Tooltip("UI Set helper line under HelperText — enable the TextMeshPro component in the prefab so the hint shows; errors reuse this line.")]
     public TMP_Text nameHelperText;
+    [Header("Audio Tracks")]
+    [Tooltip("Metadata label inside AudioTrackRow. If left empty, the controller will try to find AudioTrackRow/MetadataText at runtime.")]
+    public TMP_Text audioTrackMetadataText;
 
     private string currentPickedPath;
     private readonly List<Toggle> dialogToggles = new List<Toggle>();
@@ -45,9 +49,12 @@ public class FileSelectionDialogController : MonoBehaviour
 
         if (bodyText != null)
             bodyText.text = BuildAudioTrackSummary(pickedPath);
+        UpdatePrimaryAudioTrackRow(pickedPath);
 
         if (dialogRoot != null)
             dialogRoot.SetActive(true);
+
+        EnsureNestedPopupCanvasesRenderAboveDialog();
 
         if (nameInput != null)
         {
@@ -65,6 +72,36 @@ public class FileSelectionDialogController : MonoBehaviour
         }
 
         modeManager?.SetDialogOpen(true);
+    }
+
+    private void LateUpdate()
+    {
+        if (dialogRoot == null || !dialogRoot.activeInHierarchy)
+            return;
+
+        // Dropdown popups can toggle active state after the dialog opens, so keep their canvases elevated.
+        EnsureNestedPopupCanvasesRenderAboveDialog();
+    }
+
+    private void EnsureNestedPopupCanvasesRenderAboveDialog()
+    {
+        var parentCanvas = GetComponentInParent<Canvas>();
+        if (parentCanvas == null)
+            return;
+
+        var childCanvases = GetComponentsInChildren<Canvas>(true);
+        for (int i = 0; i < childCanvases.Length; i++)
+        {
+            var childCanvas = childCanvases[i];
+            if (childCanvas == null || childCanvas == parentCanvas)
+                continue;
+
+            // Popup lists (like the LanguageSelector dropdown) need their own canvas above the dialog.
+            childCanvas.overrideSorting = true;
+            childCanvas.sortingLayerID = parentCanvas.sortingLayerID;
+            childCanvas.sortingOrder = NestedPopupCanvasSortingOrder;
+            childCanvas.transform.SetAsLastSibling();
+        }
     }
 
     private void NormalizeDialogControlState()
@@ -157,7 +194,7 @@ public class FileSelectionDialogController : MonoBehaviour
             return "No file selected.";
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-        var summary = GetAndroidAudioTrackSummary(path);
+        var summary = BuildAndroidAudioTrackSummary(path);
         if (!string.IsNullOrWhiteSpace(summary))
             return summary;
 #endif
@@ -165,8 +202,88 @@ public class FileSelectionDialogController : MonoBehaviour
         return "Audio track details are unavailable on this platform.";
     }
 
+    private void UpdatePrimaryAudioTrackRow(string path)
+    {
+        var target = ResolveAudioTrackMetadataText();
+        if (target == null)
+            return;
+
+        target.text = BuildPrimaryAudioTrackLabel(path);
+    }
+
+    private TMP_Text ResolveAudioTrackMetadataText()
+    {
+        if (audioTrackMetadataText != null)
+            return audioTrackMetadataText;
+
+        Transform row = transform.Find("AudioTrackRow");
+        if (row == null)
+            return null;
+
+        var metadata = row.Find("MetadataText");
+        if (metadata != null)
+            audioTrackMetadataText = metadata.GetComponent<TMP_Text>();
+
+        if (audioTrackMetadataText == null)
+            audioTrackMetadataText = row.GetComponentInChildren<TMP_Text>(true);
+
+        return audioTrackMetadataText;
+    }
+
+    private string BuildPrimaryAudioTrackLabel(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return "No audio tracks detected.";
+
 #if UNITY_ANDROID && !UNITY_EDITOR
-    private string GetAndroidAudioTrackSummary(string path)
+        var tracks = GetAndroidAudioTracks(path);
+        if (tracks.Count > 0)
+            return BuildAudioTrackRowLabel(tracks[0]);
+        return "No audio tracks detected.";
+#else
+        return "Audio track metadata unavailable on this platform.";
+#endif
+    }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+    private readonly struct AudioTrackInfo
+    {
+        public AudioTrackInfo(int trackIndex, int audioOrdinal, string language, string title)
+        {
+            TrackIndex = trackIndex;
+            AudioOrdinal = audioOrdinal;
+            Language = language;
+            Title = title;
+        }
+
+        public int TrackIndex { get; }
+        public int AudioOrdinal { get; }
+        public string Language { get; }
+        public string Title { get; }
+    }
+
+    private string BuildAndroidAudioTrackSummary(string path)
+    {
+        var tracks = GetAndroidAudioTracks(path);
+        if (tracks == null)
+            return "Audio tracks: unavailable";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Audio tracks: {tracks.Count}");
+        if (tracks.Count == 0)
+        {
+            sb.Append("No audio tracks detected.");
+        }
+        else
+        {
+            for (int i = 0; i < tracks.Count; i++)
+                sb.AppendLine($"- {BuildAudioTrackRowLabel(tracks[i])}");
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private List<AudioTrackInfo> GetAndroidAudioTracks(string path)
     {
         AndroidJavaObject extractor = null;
         try
@@ -176,7 +293,7 @@ public class FileSelectionDialogController : MonoBehaviour
 
             int totalTracks = extractor.Call<int>("getTrackCount");
             int audioCount = 0;
-            var lines = new List<string>();
+            var tracks = new List<AudioTrackInfo>();
 
             for (int i = 0; i < totalTracks; i++)
             {
@@ -190,41 +307,49 @@ public class FileSelectionDialogController : MonoBehaviour
                         continue;
 
                     audioCount++;
-                    string lang = TryGetMediaFormatString(format, "language");
+                    string lang = NormalizeLanguageCode(TryGetMediaFormatString(format, "language"));
                     string title = TryGetMediaFormatString(format, "title");
-                    string label = !string.IsNullOrWhiteSpace(title)
-                        ? title
-                        : (!string.IsNullOrWhiteSpace(lang) ? lang : mime.Replace("audio/", ""));
-
-                    lines.Add($"- Track {audioCount}: {label}");
+                    tracks.Add(new AudioTrackInfo(i, audioCount, lang, title));
                 }
             }
 
-            var sb = new StringBuilder();
-            sb.AppendLine($"Audio tracks: {audioCount}");
-            if (audioCount == 0)
-            {
-                sb.Append("No audio tracks detected.");
-            }
-            else
-            {
-                for (int i = 0; i < lines.Count; i++)
-                    sb.AppendLine(lines[i]);
-            }
-
             Debug.Log($"{LogTag}: Audio analysis complete. tracks={audioCount}");
-            return sb.ToString().TrimEnd();
+            return tracks;
         }
         catch (System.Exception ex)
         {
             Debug.LogWarning($"{LogTag}: Failed to read audio track metadata. {ex.Message}");
-            return "Audio tracks: unavailable";
+            return null;
         }
         finally
         {
             if (extractor != null)
                 extractor.Dispose();
         }
+    }
+
+    private static string BuildAudioTrackRowLabel(AudioTrackInfo track)
+    {
+        string label = !string.IsNullOrWhiteSpace(track.Title)
+            ? track.Title.Trim()
+            : $"Track {track.AudioOrdinal}";
+
+        if (!string.IsNullOrWhiteSpace(track.Language))
+            return $"{label} | detected: {track.Language.ToUpperInvariant()}";
+
+        return label;
+    }
+
+    private static string NormalizeLanguageCode(string language)
+    {
+        if (string.IsNullOrWhiteSpace(language))
+            return null;
+
+        language = language.Trim();
+        if (string.Equals(language, "und", System.StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return language.Replace('_', '-');
     }
 
     private static string TryGetMediaFormatString(AndroidJavaObject format, string key)
@@ -244,5 +369,6 @@ public class FileSelectionDialogController : MonoBehaviour
             return null;
         }
     }
+
 #endif
 }

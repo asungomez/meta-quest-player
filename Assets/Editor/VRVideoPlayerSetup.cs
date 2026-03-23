@@ -625,6 +625,7 @@ public static class VRVideoPlayerSetup
         dialogController.titleText = title;
         dialogController.bodyText = FindDialogBodyText(dialogObj, title, resolvedSaveTarget, resolvedExitTarget);
         dialogController.subtitleText = subtitleText;
+        dialogController.audioTrackMetadataText = FindDialogAudioTrackMetadataText(dialogObj);
 
         // Name field: TMP_InputField must exist in the prefab under LibraryNameInput (no runtime UI creation).
         dialogController.nameInput = FindDialogNameInputField(dialogObj);
@@ -815,6 +816,29 @@ public static class VRVideoPlayerSetup
     }
 
     /// <summary>
+    /// Locates the metadata text label inside the first AudioTrackRow in the dialog prefab.
+    /// </summary>
+    private static TextMeshProUGUI FindDialogAudioTrackMetadataText(GameObject dialogObj)
+    {
+        if (dialogObj == null)
+            return null;
+
+        var row = dialogObj.transform.Find("AudioTrackRow");
+        if (row == null)
+            return null;
+
+        var metadataTf = row.Find("MetadataText");
+        if (metadataTf != null)
+        {
+            var tmp = metadataTf.GetComponent<TextMeshProUGUI>();
+            if (tmp != null)
+                return tmp;
+        }
+
+        return row.GetComponentInChildren<TextMeshProUGUI>(true);
+    }
+
+    /// <summary>
     /// Locates the HelperText label under LibraryNameInput.
     /// </summary>
     private static TextMeshProUGUI FindDialogNameHelperText(GameObject dialogObj)
@@ -861,7 +885,12 @@ public static class VRVideoPlayerSetup
         if (dialogObj == null)
             return false;
 
-        var buttons = dialogObj.GetComponentsInChildren<Button>(true);
+        // Prefer the explicit dialog action group so added controls (e.g. dropdowns inside AudioTrackRow)
+        // do not get mistaken for Save / Exit.
+        Transform actionGroup = dialogObj.transform.Find("2Buttons");
+        var searchRoot = actionGroup != null ? actionGroup.gameObject : dialogObj;
+
+        var buttons = searchRoot.GetComponentsInChildren<Button>(true);
         if (buttons.Length >= 2)
         {
             first = buttons[0].GetComponent<RectTransform>();
@@ -869,7 +898,7 @@ public static class VRVideoPlayerSetup
             return first != null && second != null;
         }
 
-        var toggles = dialogObj.GetComponentsInChildren<Toggle>(true);
+        var toggles = searchRoot.GetComponentsInChildren<Toggle>(true);
         if (toggles.Length >= 2)
         {
             first = toggles[0].GetComponent<RectTransform>();
@@ -877,7 +906,7 @@ public static class VRVideoPlayerSetup
             return first != null && second != null;
         }
 
-        var selectables = dialogObj.GetComponentsInChildren<Selectable>(true);
+        var selectables = searchRoot.GetComponentsInChildren<Selectable>(true);
         var uniqueRoots = new List<RectTransform>();
         foreach (var selectable in selectables)
         {
